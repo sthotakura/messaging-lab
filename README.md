@@ -26,6 +26,8 @@ dotnet build messaging-lab.slnx
 - `messaging-lab.solace.loadgen/` — a console app that publishes `OrderPlaced` test messages to a topic via `SolacePublisher<T>`, round-robin across a configurable number of keys with a strictly increasing per-key `Sequence`.
 - `messaging-lab.solace.subscriber/` — a console app that binds either `SolaceConcurrentSubscriber<T>` or `SolaceSequentialSubscriber<T>` (config-driven) and reports throughput, end-to-end latency (p50/p99), and per-key ordering violations, so the two subscriber types can be compared directly. See [Comparing the subscribers](#comparing-the-subscribers) below.
 
+Both console apps log to the console and to a rolling daily file under `logs/` (see [Logging](#logging) below).
+
 See `CLAUDE.md` for a deeper architectural walkthrough (interface/adapter split, concurrency model, disposal ownership).
 
 ## Example
@@ -98,3 +100,9 @@ publisher.Publish(new OrderPlaced("1001", 42.50m));
    - `MetricsReportIntervalSeconds` - how often it logs a snapshot: messages handled, elapsed time, msgs/sec, ordering violations (a per-key sequence check, catching any message handled out of delivery order), and p50/p99 end-to-end latency.
 
 Run the same load through each `UseConcurrentSubscriber` setting to compare throughput directly.
+
+## Logging
+
+Both `messaging-lab.solace.loadgen` and `messaging-lab.solace.subscriber` log to the console and to a rolling daily file (via Serilog) next to the built executable - `logs/loadgen-YYYYMMDD.log` and `logs/subscriber-YYYYMMDD.log` respectively, retaining the last 14 days - so a run's output survives after the process exits and can be reviewed for anomalies later.
+
+`SolaceConcurrentSubscriber<T>` and `SolaceSequentialSubscriber<T>` (in `messaging-lab.solace.fw`) each take an optional `ILogger<T>`. When supplied, a message that fails to deserialize or whose handler throws logs a warning with the exception and queue name before being left unacked for redelivery, instead of failing silently.
