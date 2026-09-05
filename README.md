@@ -101,6 +101,26 @@ publisher.Publish(new OrderPlaced("1001", 42.50m));
 
 Run the same load through each `UseConcurrentSubscriber` setting to compare throughput directly.
 
+Or automate the whole sweep with `scripts/run-benchmark.ps1`: it publishes a batch, drains it through the subscriber, and repeats across the sequential baseline plus a set of concurrency levels (`-Concurrencies 1,2,4,8` by default), polling the broker to detect when each configuration has fully drained before moving to the next. It writes a self-contained HTML report to `reports/`.
+
+```
+./scripts/run-benchmark.ps1 -Count 1000
+```
+
+### Latest benchmark results
+
+[`reports/benchmark-20260905-170759.html`](reports/benchmark-20260905-170759.html) - 1000 messages across 16 keys per configuration, `SimulatedHandlerWorkMinMs`/`MaxMs` at 250/1000ms:
+
+| Configuration | Elapsed | Throughput | Speedup | p50 | p99 |
+|---|---|---|---|---|---|
+| Sequential | 627.9s | 1.6/s | 1.00x | 317.5s | 624.2s |
+| Concurrent, n=1 | 637.7s | 1.6/s | 1.00x | 326.5s | 634.5s |
+| Concurrent, n=2 | 316.0s | 3.2/s | 2.00x | 161.9s | 314.9s |
+| Concurrent, n=4 | 235.7s | 4.2/s | 2.62x | 93.2s | 232.4s |
+| Concurrent, n=8 | 193.9s | 5.2/s | 3.25x | 88.3s | 190.5s |
+
+All five runs handled all 1000 messages with **0 ordering violations** (5,000 messages total). `n=1` tracks the sequential baseline almost exactly, as expected. Scaling flattens past `n=4` (2.62x -> 3.25x for a doubling of lanes, versus 2.00x -> 2.62x from `n=2` to `n=4`) - with only 16 keys hashed across 8 lanes, that's consistent with an uneven key-to-lane distribution rather than a real ceiling in the subscriber itself.
+
 ## Logging
 
 Both `messaging-lab.solace.loadgen` and `messaging-lab.solace.subscriber` log to the console and to a rolling daily file (via Serilog) next to the built executable - `logs/loadgen-YYYYMMDD.log` and `logs/subscriber-YYYYMMDD.log` respectively, retaining the last 14 days - so a run's output survives after the process exits and can be reviewed for anomalies later.
