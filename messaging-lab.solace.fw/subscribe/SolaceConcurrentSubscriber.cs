@@ -60,7 +60,7 @@ public sealed class SolaceConcurrentSubscriber<T> : IMessageSubscriber, IDisposa
             FlowStartState = false,
         };
 
-        _flow = session.Native.CreateFlow(flowProperties, _queue, null, OnMessageReceived, null);
+        _flow = session.Native.CreateFlow(flowProperties, _queue, null, OnMessageReceived, (_, _) => { });
 
         _ingress = Channel.CreateBounded<IMessage>(new BoundedChannelOptions(flowProperties.WindowSize)
         {

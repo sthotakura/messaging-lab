@@ -39,7 +39,7 @@ public sealed class SolaceSequentialSubscriber<T> : IMessageSubscriber, IDisposa
             FlowStartState = false,
         };
 
-        _flow = session.Native.CreateFlow(flowProperties, _queue, null, OnMessageReceived, null);
+        _flow = session.Native.CreateFlow(flowProperties, _queue, null, OnMessageReceived, (_, _) => { });
     }
 
     public IFlow Native => _flow;
