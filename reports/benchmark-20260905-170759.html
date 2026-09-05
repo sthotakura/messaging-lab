@@ -320,6 +320,46 @@
     </ol>
   </section>
 
+  <section class="addendum-section">
+    <h2>Addendum: n=32 lanes (this machine's CPU count)</h2>
+    <p class="chart-caption">Run separately, after the sweep above, at a different <code>KeyCount</code> and time &mdash; not a controlled comparison, so it's reported here rather than folded into the "Full results" table.</p>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Configuration</th><th>Lanes</th><th>Messages</th><th>Keys</th><th>Elapsed</th>
+            <th>Throughput</th><th>p50</th><th>p99</th><th>Violations</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="swatch" style="background:#d68a3f"></span>Concurrent</td>
+            <td class="tabular">32</td>
+            <td class="tabular">1000</td>
+            <td class="tabular">64</td>
+            <td class="tabular">40.82s</td>
+            <td class="tabular">24.5/s</td>
+            <td class="tabular">19478.7 ms</td>
+            <td class="tabular">39861.4 ms</td>
+            <td class="tabular violations-ok">0</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="chart-caption">
+      32 lanes matches this machine's logical CPU count. <code>KeyCount</code> was raised to 64 for this run
+      (from 16 in the sweep above): with only 16 distinct keys, a key selector routing by hash to 32 lanes
+      could never actually use more than 16 of them, since no single key is ever handled by more than one
+      lane. At 64 keys (~2 per lane on average), all 32 lanes get real work.
+    </p>
+    <p class="chart-caption">
+      For a rough sense of scale against the sweep above &mdash; read loosely, not as a like-for-like row,
+      since <code>KeyCount</code> differs &mdash; 24.5 msgs/sec is roughly 15.3&times; the sequential baseline
+      (1.6 msgs/sec) and about 4.7&times; the n=8 result (5.2 msgs/sec) from that run, for a 4&times; increase
+      in lanes. Zero ordering violations, consistent with the sweep above.
+    </p>
+  </section>
+
   <footer>
     <span>messaging-lab.solace.loadgen</span>
     <span>&rarr;</span>
