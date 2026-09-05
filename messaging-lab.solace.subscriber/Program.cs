@@ -80,6 +80,14 @@ builder.Services.AddSingleton<IMessageSubscriber>(sp =>
         return new SolaceSequentialSubscriber<OrderPlaced>(session, settings, deserializer, handler, sequentialLogger);
     }
 
+    // Each lane's worker task calls the handler synchronously, which blocks its ThreadPool thread
+    // for the full simulated-work delay (Thread.Sleep, not an awaited Task.Delay). The ThreadPool's
+    // default minimum is Environment.ProcessorCount, and it only grows beyond that via a throttled
+    // injection algorithm - so a lane count well above that would otherwise ramp up over tens of
+    // seconds instead of running at full concurrency immediately.
+    ThreadPool.GetMinThreads(out var minWorkerThreads, out var minCompletionPortThreads);
+    ThreadPool.SetMinThreads(Math.Max(minWorkerThreads, subscriberOptions.Concurrency + 4), minCompletionPortThreads);
+
     var keySelector = sp.GetRequiredService<IMessageKeySelector<OrderPlaced>>();
     var concurrentLogger = sp.GetRequiredService<ILogger<SolaceConcurrentSubscriber<OrderPlaced>>>();
     return new SolaceConcurrentSubscriber<OrderPlaced>(
