@@ -7,7 +7,7 @@ Rather than calling the native SDK directly everywhere, this repo builds a small
 ## Requirements
 
 - .NET SDK targeting `net10.0`
-- Access to a Solace PubSub+ broker (a local Docker broker or a free [Solace Cloud](https://console.solace.cloud/) instance both work) with a message VPN, and a queue for anything you want to consume with `SolaceSubscriber<T>`
+- Access to a Solace PubSub+ broker (a local Docker broker or a free [Solace Cloud](https://console.solace.cloud/) instance both work) with a message VPN, and a queue for anything you want to consume with `SolaceConcurrentSubscriber<T>` / `SolaceSequentialSubscriber<T>`
 
 ## Build
 
@@ -20,7 +20,7 @@ dotnet build messaging-lab.slnx
 - `messaging-lab.solace.fw/` — the library.
   - `serialization/` — `IMessageSerializer<T>` / `IMessageDeserializer<T>`, implemented with `System.Text.Json` (`JsonMessageSerializer<T>`, `JsonMessageDeserializer<T>`).
   - `publish/` — `IMessageSender<T>` / `IMessagePublisher<T>`, implemented by `SolaceMessageSender<T>` (serializes and publishes to a fixed destination) and `SolacePublisher<T>` (resolves a topic from settings and delegates to a sender).
-  - `subscribe/` — `IMessageHandler<T>` / `IMessageSubscriber`, implemented by `SolaceSubscriber<T>` (binds a client-acknowledged guaranteed-delivery flow to a queue, deserializes each message, and dispatches it to a handler).
+  - `subscribe/` — `IMessageHandler<T>` / `IMessageSubscriber`, implemented by `SolaceConcurrentSubscriber<T>` (channel + worker pool, optional ordering via a key selector) and `SolaceSequentialSubscriber<T>` (single-threaded baseline: deserializes, handles, and acks inline on the delivery callback). Both bind a client-acknowledged guaranteed-delivery flow to a queue.
   - `SolaceMessagingEnvironment`, `SolaceContext`, `SolaceSession` — thin lifecycle wrappers around the native `ContextFactory` / `IContext` / `ISession`.
 
 See `CLAUDE.md` for a deeper architectural walkthrough (interface/adapter split, concurrency model, disposal ownership).
@@ -66,7 +66,7 @@ session.Connect();
 
 using var publisher = new SolacePublisher<OrderPlaced>(
     session, new OrderTopicSettings(), new JsonMessageSerializer<OrderPlaced>(), MessageDeliveryMode.Persistent);
-using var subscriber = new SolaceSubscriber<OrderPlaced>(session, new OrderQueueSettings(), new JsonMessageDeserializer<OrderPlaced>(), new OrderHandler());
+using var subscriber = new SolaceConcurrentSubscriber<OrderPlaced>(session, new OrderQueueSettings(), new JsonMessageDeserializer<OrderPlaced>(), new OrderHandler());
 
 subscriber.Subscribe();
 publisher.Publish(new OrderPlaced("1001", 42.50m));

@@ -23,8 +23,12 @@ namespace messaging_lab.solace.fw.subscribe;
 /// single worker, so same-key messages are always handled in delivery order while different keys still run
 /// in parallel across lanes.
 /// </p>
+/// <p>
+/// See <see cref="SolaceSequentialSubscriber{T}"/> for a single-threaded alternative that deserializes,
+/// handles, and acks each message inline on the delivery callback - no channels, no worker tasks.
+/// </p>
 /// </summary>
-public sealed class SolaceSubscriber<T> : IMessageSubscriber, IDisposable
+public sealed class SolaceConcurrentSubscriber<T> : IMessageSubscriber, IDisposable
 {
     readonly IQueue _queue;
     readonly IFlow _flow;
@@ -37,7 +41,7 @@ public sealed class SolaceSubscriber<T> : IMessageSubscriber, IDisposable
     readonly Task? _router;
     bool _disposed;
 
-    public SolaceSubscriber(
+    public SolaceConcurrentSubscriber(
         SolaceSession session,
         IMessageSubscriberSettings settings,
         IMessageDeserializer<T> deserializer,
@@ -73,14 +77,16 @@ public sealed class SolaceSubscriber<T> : IMessageSubscriber, IDisposable
         else
         {
             var laneCapacity = Math.Max(1, flowProperties.WindowSize / concurrency);
-            _lanes = Enumerable.Range(0, concurrency)
-                .Select(_ => Channel.CreateBounded<(IMessage, T)>(new BoundedChannelOptions(laneCapacity)
-                {
-                    SingleWriter = true,
-                    SingleReader = true,
-                    FullMode = BoundedChannelFullMode.Wait,
-                }))
-                .ToArray();
+            _lanes =
+            [
+                .. Enumerable.Range(0, concurrency)
+                    .Select(_ => Channel.CreateBounded<(IMessage, T)>(new BoundedChannelOptions(laneCapacity)
+                    {
+                        SingleWriter = true,
+                        SingleReader = true,
+                        FullMode = BoundedChannelFullMode.Wait,
+                    }))
+            ];
 
             _router = Task.Run(RunRouterAsync);
             _workers = _lanes.Select(lane => Task.Run(() => RunLaneWorkerAsync(lane))).ToArray();
