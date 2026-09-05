@@ -8,10 +8,25 @@ using messaging_lab.solace.subscriber.Metrics;
 using messaging_lab.solace.subscriber.Orders;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Serilog;
 using SolaceSystems.Solclient.Messaging;
 
 var builder = Host.CreateApplicationBuilder(args);
+
+// Adds a rolling daily log file alongside the default console provider, so a run's log survives
+// after the process exits and can be reviewed for anomalies (deserialization/handler faults,
+// ordering violations, connection failures) that would otherwise only ever appear on the console.
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .WriteTo.File(
+        Path.Combine(AppContext.BaseDirectory, "logs", "subscriber-.log"),
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 14,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}")
+    .CreateLogger();
+builder.Logging.AddSerilog(dispose: true);
 
 builder.Services.Configure<SolaceOptions>(builder.Configuration.GetSection("Solace"));
 builder.Services.Configure<SubscriberOptions>(builder.Configuration.GetSection("Subscriber"));
@@ -61,12 +76,14 @@ builder.Services.AddSingleton<IMessageSubscriber>(sp =>
 
     if (!subscriberOptions.UseConcurrentSubscriber)
     {
-        return new SolaceSequentialSubscriber<OrderPlaced>(session, settings, deserializer, handler);
+        var sequentialLogger = sp.GetRequiredService<ILogger<SolaceSequentialSubscriber<OrderPlaced>>>();
+        return new SolaceSequentialSubscriber<OrderPlaced>(session, settings, deserializer, handler, sequentialLogger);
     }
 
     var keySelector = sp.GetRequiredService<IMessageKeySelector<OrderPlaced>>();
+    var concurrentLogger = sp.GetRequiredService<ILogger<SolaceConcurrentSubscriber<OrderPlaced>>>();
     return new SolaceConcurrentSubscriber<OrderPlaced>(
-        session, settings, deserializer, handler, keySelector, subscriberOptions.Concurrency);
+        session, settings, deserializer, handler, keySelector, subscriberOptions.Concurrency, concurrentLogger);
 });
 
 builder.Services.AddHostedService<SubscriberHostedService>();

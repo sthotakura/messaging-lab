@@ -1,5 +1,6 @@
 using System.Text;
 using messaging_lab.solace.fw.serialization;
+using Microsoft.Extensions.Logging;
 using SolaceSystems.Solclient.Messaging;
 
 namespace messaging_lab.solace.fw.subscribe;
@@ -21,16 +22,19 @@ public sealed class SolaceSequentialSubscriber<T> : IMessageSubscriber, IDisposa
     readonly IFlow _flow;
     readonly IMessageDeserializer<T> _deserializer;
     readonly IMessageHandler<T> _handler;
+    readonly ILogger<SolaceSequentialSubscriber<T>>? _logger;
     bool _disposed;
 
     public SolaceSequentialSubscriber(
         SolaceSession session,
         IMessageSubscriberSettings settings,
         IMessageDeserializer<T> deserializer,
-        IMessageHandler<T> handler)
+        IMessageHandler<T> handler,
+        ILogger<SolaceSequentialSubscriber<T>>? logger = null)
     {
         _deserializer = deserializer;
         _handler = handler;
+        _logger = logger;
 
         _queue = ContextFactory.Instance.CreateQueue(settings.Queue);
         var flowProperties = new FlowProperties
@@ -76,9 +80,10 @@ public sealed class SolaceSequentialSubscriber<T> : IMessageSubscriber, IDisposa
                 _flow.Ack(message.ADMessageId);
             }
         }
-        catch
+        catch (Exception ex)
         {
             // Malformed message or handler failure; leave unacked for redelivery.
+            _logger?.LogWarning(ex, "Failed to deserialize or handle a message on queue '{Queue}'; leaving unacked for redelivery.", ((IEndpoint)_queue).Name);
         }
     }
 

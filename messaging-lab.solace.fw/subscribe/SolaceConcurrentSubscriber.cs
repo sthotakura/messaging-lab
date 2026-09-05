@@ -1,6 +1,7 @@
 using System.Text;
 using System.Threading.Channels;
 using messaging_lab.solace.fw.serialization;
+using Microsoft.Extensions.Logging;
 using SolaceSystems.Solclient.Messaging;
 
 namespace messaging_lab.solace.fw.subscribe;
@@ -35,6 +36,7 @@ public sealed class SolaceConcurrentSubscriber<T> : IMessageSubscriber, IDisposa
     readonly IMessageDeserializer<T> _deserializer;
     readonly IMessageHandler<T> _handler;
     readonly IMessageKeySelector<T>? _keySelector;
+    readonly ILogger<SolaceConcurrentSubscriber<T>>? _logger;
     readonly Channel<IMessage> _ingress;
     readonly Channel<(IMessage Message, T Payload)>[]? _lanes;
     readonly Task[] _workers;
@@ -47,11 +49,13 @@ public sealed class SolaceConcurrentSubscriber<T> : IMessageSubscriber, IDisposa
         IMessageDeserializer<T> deserializer,
         IMessageHandler<T> handler,
         IMessageKeySelector<T>? keySelector = null,
-        int concurrency = 4)
+        int concurrency = 4,
+        ILogger<SolaceConcurrentSubscriber<T>>? logger = null)
     {
         _deserializer = deserializer;
         _handler = handler;
         _keySelector = keySelector;
+        _logger = logger;
 
         _queue = ContextFactory.Instance.CreateQueue(settings.Queue);
         var flowProperties = new FlowProperties
@@ -128,9 +132,10 @@ public sealed class SolaceConcurrentSubscriber<T> : IMessageSubscriber, IDisposa
                 var lane = _lanes![unchecked((uint)_keySelector!.GetKey(payload).GetHashCode()) % (uint)_lanes.Length];
                 await lane.Writer.WriteAsync((message, payload));
             }
-            catch
+            catch (Exception ex)
             {
                 // Malformed message or key extraction failure; leave unacked for redelivery.
+                _logger?.LogWarning(ex, "Failed to deserialize or key a message on queue '{Queue}'; leaving unacked for redelivery.", ((IEndpoint)_queue).Name);
                 message.Dispose();
             }
         }
@@ -155,9 +160,10 @@ public sealed class SolaceConcurrentSubscriber<T> : IMessageSubscriber, IDisposa
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
                 // This message faulted; keep draining the rest of the lane in order.
+                _logger?.LogWarning(ex, "Handler faulted for a message on queue '{Queue}'; leaving unacked for redelivery.", ((IEndpoint)_queue).Name);
             }
         }
     }
@@ -179,9 +185,10 @@ public sealed class SolaceConcurrentSubscriber<T> : IMessageSubscriber, IDisposa
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
                 // This message faulted; keep draining the rest of the channel.
+                _logger?.LogWarning(ex, "Failed to deserialize or handle a message on queue '{Queue}'; leaving unacked for redelivery.", ((IEndpoint)_queue).Name);
             }
         }
     }
