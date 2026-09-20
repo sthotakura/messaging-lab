@@ -26,6 +26,13 @@ public sealed class OrderHandler(
                 "Out-of-order message for {OrderId}: sequence {Sequence} handled after a later one", message.OrderId, message.Sequence);
         }
 
+        // This process's own OrderingValidator above only ever sees the subset of keys/sequences
+        // *this* process received, so it can't detect reordering across multiple subscriber
+        // processes on a non-partitioned queue (see README > Comparing multiple subscribers on a
+        // non-partitioned queue). This line lets an external tool reconstruct the true global
+        // handling order by merging every instance's log by timestamp and checking it there instead.
+        logger.LogInformation("HANDLED OrderId={OrderId:l} Sequence={Sequence}", message.OrderId, message.Sequence);
+
         metrics.RecordHandled(latency);
         return true;
     }

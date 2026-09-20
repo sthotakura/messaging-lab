@@ -203,6 +203,47 @@ Elapsed here is wall-clock time from when the subscriber processes start consumi
 
 **A data-integrity bug hit and fixed while producing this report:** the script's drain timeout (originally a flat 300s) was sized for a 100-message trial run, not 1000 messages - at `Instances=1/Concurrency=1` (fully sequential), draining 1000 messages at up to 1000ms simulated work each can take over 600s. The first 1000-message attempt hit that timeout, and the script *silently moved on to the next configuration anyway*, publishing a fresh batch on top of the still-nonzero leftover backlog - contaminating several configurations' message counts (one row reported handling 1439 of 1000 published messages, mixing two configurations' batches together). Fixed two ways: `DrainTimeoutSeconds` now defaults to a value scaled from `Count` and the subscriber's `SimulatedHandlerWorkMaxMs` rather than a flat constant, and a timeout now aborts the whole sweep with a clear error instead of continuing - a corrupted result is worse than no result.
 
+## Comparing multiple subscribers on a non-partitioned queue
+
+The previous section's guarantee - per-key ordering holding across processes - comes entirely from the partition key. What actually happens on a plain non-exclusive queue, with the *same* competing-consumer setup but no partitioning at all? Run against `CHANGED` (converted to non-exclusive, 0 partitions) with `scripts/run-benchmark-multisubscriber-nonpartitioned.ps1`, same sweep shape (5 instance counts x 4 lane counts, 1000 messages x 64 keys per configuration) for a direct comparison.
+
+Measuring this honestly required fixing a real blind spot first: each subscriber process's own `OrderingValidator` only ever compares a message against others *that same process* received, so it structurally cannot see a violation caused by two different processes each handling half of one key's messages - each process's own view still looks perfectly monotonic. `OrderHandler` now also logs a structured `HANDLED OrderId=... Sequence=...` line for every message; the script merges every instance's log for a configuration's time window into one true-arrival-order stream (by timestamp) and re-checks per-key ordering over *that*, which is the only way to actually see this failure mode.
+
+### Results
+
+[`reports/benchmark-multisubscriber-nonpartitioned-20260920-235235.html`](reports/benchmark-multisubscriber-nonpartitioned-20260920-235235.html):
+
+| Instances | Lanes/instance | Elapsed | Throughput | Per-process viol. | **Global viol.** |
+|---|---|---|---|---|---|
+| 1 | 1 | 637.77s | 1.6/s | 0 | 0 |
+| 1 | 8 | 131.4s | 7.6/s | 0 | 0 |
+| 2 | 1 | 457.07s | 2.2/s | 0 | **704** |
+| 2 | 8 | 66.85s | 15/s | 0 | **524** |
+| 4 | 1 | 449.45s | 2.2/s | 0 | **704** |
+| 4 | 8 | 62.76s | 15.9/s | 0 | **514** |
+| 8 | 1 | 455.66s | 2.2/s | 0 | **704** |
+| 8 | 8 | 68.92s | 14.5/s | 0 | **525** |
+| 16 | 1 | 459.08s | 2.2/s | 0 | **704** |
+| 16 | 8 | 60.77s | 16.5/s | 0 | **520** |
+
+(Full 20-row matrix in the report.) Two findings, both consistent across every instance count from 2 to 16:
+
+**The per-process check never once caught anything - 0 across all 20 configurations, every single row.** The merged, cross-process check found **9,931 ordering violations across the 16,000 messages** handled by any configuration with 2+ instances (up to 70% of a single configuration's messages, e.g. 704 of 1000 at `Instances=2, Concurrency=1`) - real reordering, entirely invisible to the instrumentation every single-process and partitioned-queue benchmark in this README relies on. `Instances=1` (no second process to race against) is the only clean baseline: 0 violations there too, confirming the merge logic itself isn't the source of false positives.
+
+**Instance count stopped mattering past 2 - throughput at a given lane count is nearly identical whether 2, 4, 8, or 16 processes are bound** (e.g. `Concurrency=1`: 457s / 449s / 456s / 459s for 2/4/8/16 instances - the same result within noise). This was visible directly on the broker's queue consumer list during the run: binding 4, 8, then 16 subscriber processes to `CHANGED` consistently left only **2** of them actually receiving anything (`Unacknowledged Messages`/`Messages Confirmed Delivered` both 0 for the rest), regardless of how many bound. Per [Solace's own description](https://solace.com/blog/consumer-groups-consumer-scaling-solace/) of non-exclusive delivery, messages go to whichever consumer currently has window credit and is acking fast enough to keep earning more - the broker only reaches further down the list of bound consumers once the ones already serving fall behind. With `SimulatedHandlerWork` giving 2 consumers just enough of a steady ack rate to keep re-earning their 255-message window, the broker had no reason to ever engage a 3rd, 5th, or 16th. That's also why the violation counts don't scale up with instance count either: the real competition is always between roughly the same ~2 active processes, not genuinely N-way.
+
+Only *lane count* (`SolaceConcurrentSubscriber<T>`'s in-process concurrency) reliably improved throughput here - `Concurrency=1 -> 8` cuts elapsed time by roughly 7x at every instance count - because that scaling happens entirely inside whichever 1-2 processes the broker actually chose to use.
+
+### Contrast with the partitioned queue
+
+| | `CHANGED` (non-exclusive, 0 partitions) | `CHANGED-P` (non-exclusive, 8 partitions) |
+|---|---|---|
+| Ordering violations (properly measured) | 9,931 / 20,000 messages | 0 / 20,000 messages |
+| Does adding instances beyond ~2 help throughput? | No - broker never engages them | Yes, up to `PartitionCount` |
+| Does the built-in per-process check catch the problem? | No - reports 0 regardless | N/A - guarantee holds by construction |
+
+The partition key doesn't just fix ordering - it's also what makes horizontal scaling with more subscriber processes actually work at all on this broker, by giving it a concrete reason (a disjoint partition to own) to spread load across more than a couple of consumers.
+
 ## Porting `SolaceConcurrentSubscriber<T>` to .NET Framework 4.8
 
 This repo targets `net10.0`, but nothing in `SolaceConcurrentSubscriber<T>` (`messaging-lab.solace.fw/subscribe/SolaceConcurrentSubscriber.cs`) is actually tied to modern .NET - the class body would port to `net48` essentially unchanged. Every real adaptation happens in the `.csproj`, not the class:
