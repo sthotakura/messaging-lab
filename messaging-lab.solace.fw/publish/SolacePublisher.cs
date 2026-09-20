@@ -15,8 +15,10 @@ public sealed class SolacePublisher<T>(IMessageSender<T> sender) : IMessagePubli
         SolaceSession session,
         IMessagePublisherSettings settings,
         IMessageSerializer<T> serializer,
-        MessageDeliveryMode deliveryMode = MessageDeliveryMode.Direct)
-        : this(new SolaceMessageSender<T>(session, ContextFactory.Instance.CreateTopic(settings.Topic), serializer, deliveryMode))
+        MessageDeliveryMode deliveryMode = MessageDeliveryMode.Direct,
+        IMessageKeySelector<T>? partitionKeySelector = null)
+        : this(new SolaceMessageSender<T>(
+            session, ContextFactory.Instance.CreateTopic(settings.Topic), serializer, deliveryMode, partitionKeySelector: partitionKeySelector))
     {
     }
 

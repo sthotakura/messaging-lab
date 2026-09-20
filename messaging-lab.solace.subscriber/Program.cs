@@ -15,16 +15,22 @@ using SolaceSystems.Solclient.Messaging;
 
 var builder = Host.CreateApplicationBuilder(args);
 
+// Read ahead of the DI container being built - multiple subscriber instances run concurrently
+// against a partitioned queue (see README) and would otherwise all fight over one log file.
+var instanceId = builder.Configuration["Subscriber:InstanceId"];
+var logFileName = instanceId is null ? "subscriber-.log" : $"subscriber-{instanceId}-.log";
+
 // Adds a rolling daily log file alongside the default console provider, so a run's log survives
 // after the process exits and can be reviewed for anomalies (deserialization/handler faults,
 // ordering violations, connection failures) that would otherwise only ever appear on the console.
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
+    .Enrich.WithProperty("InstanceId", instanceId ?? "-")
     .WriteTo.File(
-        Path.Combine(AppContext.BaseDirectory, "logs", "subscriber-.log"),
+        Path.Combine(AppContext.BaseDirectory, "logs", logFileName),
         rollingInterval: RollingInterval.Day,
         retainedFileCountLimit: 14,
-        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}")
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{InstanceId}] {SourceContext}: {Message:lj}{NewLine}{Exception}")
     .CreateLogger();
 builder.Logging.AddSerilog(dispose: true);
 

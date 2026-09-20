@@ -14,7 +14,8 @@ public sealed class SolaceMessageSender<T>(
     IDestination destination,
     IMessageSerializer<T> serializer,
     MessageDeliveryMode deliveryMode = MessageDeliveryMode.Direct,
-    TimeSpan? sendTimeout = null)
+    TimeSpan? sendTimeout = null,
+    IMessageKeySelector<T>? partitionKeySelector = null)
     : IMessageSender<T>, IDisposable
 {
     static readonly TimeSpan DefaultSendTimeout = TimeSpan.FromSeconds(10);
@@ -30,6 +31,18 @@ public sealed class SolaceMessageSender<T>(
         solaceMessage.Destination = destination;
         solaceMessage.DeliveryMode = deliveryMode;
         solaceMessage.BinaryAttachment = Encoding.UTF8.GetBytes(json);
+
+        // Only meaningful to a partitioned queue - the broker hashes this to pick a partition,
+        // guaranteeing same-key messages always land in the same partition (and therefore are
+        // only ever seen by one bound consumer flow) regardless of how many consumers are bound.
+        // Harmless to set against a non-partitioned queue; the broker just ignores it.
+        if (partitionKeySelector is not null)
+        {
+            solaceMessage.CreateUserPropertyMap();
+            solaceMessage.UserPropertyMap.AddString(
+                MessageUserPropertyConstants.SOLCLIENT_USER_PROP_QUEUE_PARTITION_KEY,
+                partitionKeySelector.GetKey(message));
+        }
 
         // A full publisher window returns WOULD_BLOCK rather than blocking; retry until it
         // drains, bounded by _sendTimeout so a stalled session/broker can't hang the caller forever.

@@ -19,12 +19,13 @@ dotnet build messaging-lab.slnx
 
 - `messaging-lab.solace.fw/` — the library.
   - `serialization/` — `IMessageSerializer<T>` / `IMessageDeserializer<T>`, implemented with `System.Text.Json` (`JsonMessageSerializer<T>`, `JsonMessageDeserializer<T>`).
-  - `publish/` — `IMessageSender<T>` / `IMessagePublisher<T>`, implemented by `SolaceMessageSender<T>` (serializes and publishes to a fixed destination, retrying on a full publisher window up to a configurable timeout) and `SolacePublisher<T>` (resolves a topic from settings and delegates to a sender).
+  - `publish/` — `IMessageSender<T>` / `IMessagePublisher<T>`, implemented by `SolaceMessageSender<T>` (serializes and publishes to a fixed destination, retrying on a full publisher window up to a configurable timeout, optionally setting a Solace partitioned-queue partition key from an `IMessageKeySelector<T>`) and `SolacePublisher<T>` (resolves a topic from settings and delegates to a sender).
   - `subscribe/` — `IMessageHandler<T>` / `IMessageSubscriber`, implemented by `SolaceConcurrentSubscriber<T>` (channel + worker pool, optional ordering via a key selector) and `SolaceSequentialSubscriber<T>` (single-threaded baseline: deserializes, handles, and acks inline on the delivery callback). Both bind a client-acknowledged guaranteed-delivery flow to a queue.
+  - `IMessageKeySelector<T>` (project root) — shared by both `publish/` (partition key on send) and `subscribe/` (lane routing key on receive), since the same key drives ordering guarantees on both sides. See [Comparing multiple subscribers](#comparing-multiple-subscribers).
   - `SolaceMessagingEnvironment`, `SolaceContext`, `SolaceSession` — thin lifecycle wrappers around the native `ContextFactory` / `IContext` / `ISession`.
-- `messaging-lab.orders/` — the `OrderPlaced` message contract (`OrderId`, `Total`, a per-key `Sequence`, `PublishedAtUtc`) shared by the two console apps below.
-- `messaging-lab.solace.loadgen/` — a console app that publishes `OrderPlaced` test messages to a topic via `SolacePublisher<T>`, round-robin across a configurable number of keys with a strictly increasing per-key `Sequence`.
-- `messaging-lab.solace.subscriber/` — a console app that binds either `SolaceConcurrentSubscriber<T>` or `SolaceSequentialSubscriber<T>` (config-driven) and reports throughput, end-to-end latency (p50/p99), and per-key ordering violations, so the two subscriber types can be compared directly. See [Comparing the subscribers](#comparing-the-subscribers) below.
+- `messaging-lab.orders/` — the `OrderPlaced` message contract (`OrderId`, `Total`, a per-key `Sequence`, `PublishedAtUtc`) and `OrderKeySelector` (`OrderPlaced -> OrderId`), shared by the two console apps below.
+- `messaging-lab.solace.loadgen/` — a console app that publishes `OrderPlaced` test messages to a topic via `SolacePublisher<T>`, round-robin across a configurable number of keys with a strictly increasing per-key `Sequence`, always setting `OrderKeySelector`'s key as the Solace partition key (a no-op against a non-partitioned queue).
+- `messaging-lab.solace.subscriber/` — a console app that binds either `SolaceConcurrentSubscriber<T>` or `SolaceSequentialSubscriber<T>` (config-driven) and reports throughput, end-to-end latency (p50/p99), and per-key ordering violations, so the two subscriber types can be compared directly, or so multiple concurrently-running instances (each tagged with `Subscriber:InstanceId`) can be compared as competing consumers. See [Comparing the subscribers](#comparing-the-subscribers) and [Comparing multiple subscribers](#comparing-multiple-subscribers) below.
 
 Both console apps log to the console and to a rolling daily file under `logs/` (see [Logging](#logging) below).
 
@@ -139,6 +140,68 @@ All four runs handled all 1000 messages with **0 ordering violations** (4,000 me
 This run also fixed a real confound: `OrderHandler`'s simulated work uses `Thread.Sleep`, a blocking call, so each lane occupies a real .NET ThreadPool worker thread for the full delay. The ThreadPool's default minimum is `Environment.ProcessorCount`, growing beyond that only via a throttled injection algorithm (roughly one new thread per ~0.5-1s under sustained starvation) - so `n=62`/`n=93` wouldn't have run at their full requested concurrency without help. `messaging-lab.solace.subscriber`'s `Program.cs` now calls `ThreadPool.SetMinThreads` sized to the configured `Concurrency` before constructing the subscriber, so a lane count actually gets that much real parallelism from the start.
 
 On whether the specific lane counts (`numberOfCPUs`, `(numberOfCPUs-1)*2`, `(numberOfCPUs-1)*3`) are a meaningful ladder: not particularly. That "reserve one core, scale by a multiple" convention comes from tuning CPU-bound thread pools, and this handler is I/O-shaped (its `Thread.Sleep` stands in for an external call), where lanes aren't pinned to cores and there's no compute to saturate - so there's no physical reason CPU count should be a ceiling here. A more defensible ladder would be tied to something that actually constrains this system: the flow's `WindowSize` (split across lanes, so `laneCapacity = WindowSize / concurrency` floors at 1 once `concurrency` exceeds it), `KeyCount` (a lane with no assigned keys does nothing, which is what broke the earlier `n=32`/`KeyCount=16` addendum run before it was corrected), or a real downstream capacity limit if one were being modeled.
+
+## Comparing multiple subscribers
+
+[Comparing the subscribers](#comparing-the-subscribers) scales *up*: one process, more worker lanes inside it. This section scales *out*: multiple independent `messaging-lab.solace.subscriber` processes bound to the same queue as competing consumers, each optionally still running its own `SolaceConcurrentSubscriber<T>` lanes internally. The two axes compose - N processes x M lanes/process gives N x M total parallelism - but scaling across processes only keeps per-`OrderId` ordering intact if the broker itself guarantees a given key is never split across two processes. A single non-exclusive queue can't do that: the broker round-robins deliveries across bound consumers with no idea which key is inside each message, so two messages for the same `OrderId` could easily land on two different processes and be handled in either order. A [Solace partitioned queue](https://docs.solace.com/Messaging/Guaranteed-Msg/Partitioned-Queue-Messaging.htm) is what closes that gap.
+
+### Partitioned queues in one paragraph
+
+A partitioned queue is a non-exclusive queue split into a fixed number of partitions at creation time. Publishers set a partition key (a user property) on each message; the broker hashes it to pick a partition, and every message sharing a key always lands in the same partition. A partition is only ever owned by one bound consumer flow at a time - a consumer can own several partitions, but a partition is never split across consumers - so same-key messages are only ever seen by one subscriber process. Per-key ordering holds *globally* with zero extra coordination on the application side: the same guarantee `SolaceConcurrentSubscriber<T>`'s key-selector lanes already give within a single process, just moved down into the broker. The corollary: the partition count fixed at queue-creation time is a hard ceiling on how many consumers can ever do useful work - an `N+1`th bound consumer beyond `N` partitions sits idle forever (see [Latest results](#latest-results-1) below).
+
+### Setup
+
+1. Create a non-exclusive, partitioned queue and subscribe it to its own topic - kept separate from `CHANGED`/`data-changed` so this doesn't disturb the single-subscriber benchmark above:
+   ```
+   configure
+     message-spool queue CHANGED-P
+       access-type non-exclusive
+       partition
+         count 8
+       exit
+       subscription topic data-changed-p
+       no shutdown
+   ```
+   Requires a broker recent enough to support partitioned queues (broker 10.20+ for the .NET API; GA since 10.4.0).
+2. `OrderKeySelector` (`messaging-lab.orders/OrderKeySelector.cs`) maps `OrderPlaced -> OrderId`. `messaging-lab.solace.loadgen` always passes it to `SolacePublisher<T>` as a partition-key selector, so every published message carries its `OrderId` as the partition key (`MessageUserPropertyConstants.SOLCLIENT_USER_PROP_QUEUE_PARTITION_KEY`). This is harmless against a non-partitioned queue - the broker just ignores the property - so it doesn't change the existing single-subscriber benchmark's behavior.
+3. Each subscriber process takes a `Subscriber:InstanceId`, so multiple concurrently-running instances don't collide on one Serilog file (`logs/subscriber-{id}-*.log`) and can be told apart in their log output.
+
+### Running it
+
+```
+./scripts/run-benchmark-multisubscriber.ps1 -PartitionCount 8
+```
+
+Sweeps subscriber process count (`-InstanceCounts`, default `1, 2, 4, PartitionCount/2, PartitionCount, PartitionCount*2` deduplicated) against per-instance lane count (`-Concurrencies`, default `1,2,4,8`), publishing a fresh batch and draining it across that many concurrently-running subscriber processes for every combination. `-PartitionCount` is required - it's a broker-side, creation-time property the script has no way to discover on its own. It builds `loadgen`/`subscriber` once up front and `dotnet <dll>`-execs the already-built output for every instance, rather than launching N concurrent `dotnet run`s that would race on the same MSBuild output.
+
+### Latest results
+
+[`reports/benchmark-multisubscriber-20260920-215019.html`](reports/benchmark-multisubscriber-20260920-215019.html) - 1000 messages across 64 keys per configuration (matching the scale of the single-subscriber benchmark above), `CHANGED-P` with 8 partitions, `SimulatedHandlerWorkMinMs`/`MaxMs` at 250/1000ms; all 5 instance counts (1, 2, 4, 8, 16) x all 4 lane counts (1, 2, 4, 8), 20 configurations in total:
+
+| Instances | Lanes/instance | Total lanes | Busy instances | Elapsed | Throughput |
+|---|---|---|---|---|---|
+| 1 | 1 | 1 | 1 | 649.18s | 1.5/s |
+| 1 | 8 | 8 | 1 | 137.86s | 7.3/s |
+| 2 | 1 | 2 | 2 | 341.51s | 2.9/s |
+| 2 | 8 | 16 | 2 | 82.32s | 12.1/s |
+| 4 | 1 | 4 | 4 | 173.99s | 5.7/s |
+| 4 | 8 | 32 | 4 | 46.29s | 21.6/s |
+| 8 | 1 | 8 | 8 | 116.25s | 8.6/s |
+| 8 | 8 | 64 | 8 | 49.36s | 20.3/s |
+| 16 | 1 | 16 | **8 (8 idle)** | 114.2s | 8.8/s |
+| 16 | 8 | 128 | **8 (8 idle)** | 34.98s | 28.6/s |
+
+(Full 20-row matrix, all instance/lane combinations, in the report.)
+
+All 20 configurations (20,000 messages total) handled with **0 ordering violations** - the partitioned queue's per-key partition assignment kept every `OrderId`'s messages inside one process for the whole sweep, the same guarantee already established for in-process lanes, now holding across processes too. Fastest configuration (`16x8`, 34.98s) vs. slowest (`1x1`, 649.18s) is an **18.56x** speedup.
+
+The **idle-consumer ceiling** is directly visible: every `Instances=16` row shows only 8 busy instances - the other 8 bound successfully but were never assigned a partition - since a partition can never be split or shared, at most `PartitionCount` consumers can ever be doing anything regardless of how many bind. With 8 partitions and 8 busy instances, both the `Instances=8` and `Instances=16` rows end up as 8 processes each owning exactly one partition - functionally the same configuration - which is why `16x1` (8.8/s) and `8x1` (8.6/s) land close together. `16x8` came out noticeably ahead of `8x8` (28.6/s vs. 20.3/s) despite that equivalence; with only one trial per configuration and `SimulatedHandlerWorkMinMs`/`MaxMs` randomized per message, that's most plausibly run-to-run noise rather than a real effect - worth a repeat trial before reading anything into it.
+
+Throughput otherwise tracks **total lanes** (instances x lanes/instance): `4x8` (32 total lanes, 21.6/s) and `8x4` (32 total lanes, 18/s - see full table in the report) land in the same range, and `8x8`/`16x8` (64 effective lanes either way) are both around 20-29/s, well past the point where `1x1`'s 1.5/s single lane sits. It hasn't fully flattened the way the single-subscriber lane sweep did by `n=8` - full JSON/network overhead per extra OS process is higher than an in-process worker lane, so the curve here is somewhat noisier and the plateau (if there is one below `PartitionCount x max lanes`) isn't as sharply visible with only one trial per configuration.
+
+Elapsed here is wall-clock time from when the subscriber processes start consuming to when the broker (via SEMP) reports the queue empty, not any single instance's own tracked elapsed figure - with N processes running concurrently, no one instance's first-to-last-handled span necessarily covers the whole run. See the report itself for the rest of this benchmark's caveats (single trial per configuration, latency reported as a cross-instance min-p50/max-p99 range rather than a merged percentile).
+
+**A data-integrity bug hit and fixed while producing this report:** the script's drain timeout (originally a flat 300s) was sized for a 100-message trial run, not 1000 messages - at `Instances=1/Concurrency=1` (fully sequential), draining 1000 messages at up to 1000ms simulated work each can take over 600s. The first 1000-message attempt hit that timeout, and the script *silently moved on to the next configuration anyway*, publishing a fresh batch on top of the still-nonzero leftover backlog - contaminating several configurations' message counts (one row reported handling 1439 of 1000 published messages, mixing two configurations' batches together). Fixed two ways: `DrainTimeoutSeconds` now defaults to a value scaled from `Count` and the subscriber's `SimulatedHandlerWorkMaxMs` rather than a flat constant, and a timeout now aborts the whole sweep with a clear error instead of continuing - a corrupted result is worse than no result.
 
 ## Porting `SolaceConcurrentSubscriber<T>` to .NET Framework 4.8
 

@@ -5,6 +5,13 @@ public sealed class SubscriberOptions
     public required string Queue { get; init; }
 
     /// <summary>
+    /// Optional identifier for this process, used to keep multiple concurrently-running subscriber
+    /// instances (bound to the same partitioned queue) from colliding on one log file and to
+    /// attribute metrics/log lines to a specific instance. Unset (null) for a single-instance run.
+    /// </summary>
+    public string? InstanceId { get; init; }
+
+    /// <summary>
     /// True to bind <see cref="messaging_lab.solace.fw.subscribe.SolaceConcurrentSubscriber{T}"/>,
     /// false to bind <see cref="messaging_lab.solace.fw.subscribe.SolaceSequentialSubscriber{T}"/>.
     /// </summary>

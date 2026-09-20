@@ -1,7 +1,9 @@
 using messaging_lab.solace.fw;
 using messaging_lab.solace.fw.subscribe;
+using messaging_lab.solace.subscriber.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace messaging_lab.solace.subscriber;
 
@@ -13,12 +15,18 @@ namespace messaging_lab.solace.subscriber;
 public sealed class SubscriberHostedService(
     SolaceSession session,
     IMessageSubscriber subscriber,
+    IOptions<SubscriberOptions> options,
     ILogger<SubscriberHostedService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         subscriber.Subscribe();
-        logger.LogInformation("Subscriber started.");
+        var subscriberOptions = options.Value;
+        logger.LogInformation(
+            "Subscriber started (instance {InstanceId}, queue '{Queue}', {Kind}).",
+            subscriberOptions.InstanceId ?? "-",
+            subscriberOptions.Queue,
+            subscriberOptions.UseConcurrentSubscriber ? $"concurrent, {subscriberOptions.Concurrency} lanes" : "sequential");
 
         try
         {

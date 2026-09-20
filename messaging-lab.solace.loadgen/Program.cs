@@ -60,8 +60,11 @@ try
         ? MessageDeliveryMode.Persistent
         : MessageDeliveryMode.NonPersistent;
 
+    // Always sets a partition key derived from OrderId - a no-op against a non-partitioned
+    // queue (the broker just ignores the user property), and what makes same-key ordering hold
+    // across multiple subscriber processes bound to a partitioned queue (see README).
     using var publisher = new SolacePublisher<OrderPlaced>(
-        session, new OrderTopicSettings(loadGenOptionsAccessor), new JsonMessageSerializer<OrderPlaced>(), deliveryMode);
+        session, new OrderTopicSettings(loadGenOptionsAccessor), new JsonMessageSerializer<OrderPlaced>(), deliveryMode, new OrderKeySelector());
 
     logger.LogInformation(
         "Publishing {Count} messages across {KeyCount} keys to topic '{Topic}'...",
