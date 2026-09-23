@@ -102,6 +102,7 @@ builder.Services.AddSingleton<IMessageSubscriber>(sp =>
 });
 
 builder.Services.AddHostedService<SubscriberHostedService>();
+builder.Services.AddHostedService<NetworkBlipSimulatorService>();
 
 var host = builder.Build();
 await host.RunAsync();

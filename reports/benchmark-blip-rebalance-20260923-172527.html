@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blip Rebalance Benchmark - 20260923-172527</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    color-scheme: light dark;
+    --paper: #eef0ed; --surface: #ffffff; --surface-2: #f5f6f3;
+    --line: #dde0da; --line-strong: #c7ccc3;
+    --ink: #1c2129; --ink-soft: #545d6b; --ink-faint: #7c8492;
+    --accent: #a35a16; --baseline: #8b93a0;
+    --good: #2f7d52; --good-bg: #e3efe7;
+    --bad: #a3341f; --bad-bg: #f3e3df;
+    --font-display: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif;
+    --font-body: "IBM Plex Serif", Georgia, serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "Courier New", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #14171c; --surface: #1b1f26; --surface-2: #20242c;
+      --line: #2b313b; --line-strong: #3a4250;
+      --ink: #eef0f0; --ink-soft: #9aa3b0; --ink-faint: #7c8794;
+      --accent: #e08935; --baseline: #9aa3b0;
+      --good: #4caf7d; --good-bg: #1e2f26;
+      --bad: #e0685a; --bad-bg: #34211e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-body); line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  .page { max-width: 900px; margin: 0 auto; padding: 48px 24px 72px; display: flex; flex-direction: column; gap: 40px; }
+  h1, h2 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+  code { font-family: var(--font-mono); font-size: 0.92em; background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; padding: 0.05em 0.35em; }
+  .tabular { font-variant-numeric: tabular-nums; }
+
+  .masthead { display: flex; flex-direction: column; gap: 14px; padding-bottom: 28px; border-bottom: 1px solid var(--line); }
+  .eyebrow { margin: 0; font-family: var(--font-mono); font-size: 0.78rem; letter-spacing: 0.09em; text-transform: uppercase; color: var(--accent); }
+  .masthead h1 { font-size: clamp(1.9rem, 4vw, 2.5rem); font-weight: 700; letter-spacing: -0.01em; }
+  .dek { max-width: 66ch; margin: 0; color: var(--ink-soft); font-size: 1.02rem; }
+  .run-meta { margin: 6px 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  .run-meta > div { padding: 10px 14px; border-left: 1px solid var(--line); min-width: 0; overflow: hidden; }
+  .run-meta > div:first-child { border-left: none; }
+  .run-meta dt { margin: 0; font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-faint); }
+  .run-meta dd { margin: 3px 0 0; font-family: var(--font-mono); font-size: 0.86rem; color: var(--ink); overflow-wrap: anywhere; }
+
+  .headline-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
+  .stat-tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .stat-tile.status-good { background: var(--good-bg); border-color: var(--good); }
+  .stat-tile.status-bad { background: var(--bad-bg); border-color: var(--bad); }
+  .stat-value { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 2.05rem; letter-spacing: -0.01em; }
+  .status-good .stat-value { color: var(--good); }
+  .status-bad .stat-value { color: var(--bad); }
+  .stat-label { margin: 6px 0 0; font-size: 0.84rem; color: var(--ink-soft); line-height: 1.4; }
+
+  section h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 6px; }
+  .chart-caption, .section-intro { max-width: 70ch; color: var(--ink-soft); font-size: 0.92rem; margin: 0 0 16px; }
+
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; background: var(--surface); font-size: 0.86rem; min-width: 720px; }
+  thead th { text-align: right; font-family: var(--font-mono); font-weight: 500; font-size: 0.7rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-faint); padding: 10px 14px; border-bottom: 1px solid var(--line-strong); white-space: nowrap; }
+  thead th:first-child { text-align: left; }
+  tbody td { text-align: right; font-family: var(--font-mono); padding: 10px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody td:first-child { text-align: left; font-family: var(--font-display); }
+  .violations-ok { color: var(--good); font-weight: 600; }
+  .violations-bad { color: var(--bad); font-weight: 600; }
+
+  .notes-section ol { padding-left: 1.3em; margin: 0; display: flex; flex-direction: column; gap: 10px; max-width: 72ch; }
+  .notes-section li { padding-left: 4px; }
+  .notes-section li::marker { font-family: var(--font-mono); color: var(--ink-faint); }
+
+  footer { padding-top: 20px; border-top: 1px solid var(--line); font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink-faint); display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="masthead">
+    <p class="eyebrow">messaging-lab &middot; benchmark report</p>
+    <h1>Blip Rebalance Benchmark</h1>
+    <p class="dek">
+      8 instance(s), one per partition, draining a 400-message backlog &mdash; instance
+      1 deliberately disconnects and reconnects its own session 4s in,
+      staying down for 10s, to reach <code>FlowEvent.FlowInactive</code> on an
+      instance that was genuinely already active. 3 trial(s).
+    </p>
+    <dl class="run-meta">
+      <div><dt>Broker</dt><dd>tcp://localhost:55555 (default)</dd></div>
+      <div><dt>Route</dt><dd>data-changed-p &rarr; CHANGED-P</dd></div>
+      <div><dt>Partitions</dt><dd>8</dd></div>
+      <div><dt>Instances</dt><dd>8 (blip: #1)</dd></div>
+      <div><dt>Blip</dt><dd>after 4s, lasts 10s</dd></div>
+      <div><dt>Load / run</dt><dd>400 msgs &middot; 64 keys</dd></div>
+      <div><dt>Simulated work</dt><dd>250&ndash;1000 ms</dd></div>
+      <div><dt>Run date</dt><dd>2026-09-23</dd></div>
+    </dl>
+  </header>
+
+  <section class="headline-stats">
+    <div class="stat-tile status-bad">
+      <p class="stat-value tabular">23</p>
+      <p class="stat-label">global duplicate handling(s)<br>across 3 trial(s)</p>
+    </div>
+    <div class="stat-tile status-good">
+      <p class="stat-value tabular">108</p>
+      <p class="stat-label">buffered messages the blip instance<br>dropped instead of handling</p>
+    </div>
+    <div class="stat-tile status-bad">
+      <p class="stat-value tabular">2/3</p>
+      <p class="stat-label">trial(s) where the blip instance<br>actually went inactive</p>
+    </div>
+  </section>
+
+  <section class="table-section">
+    <h2>What happened, per trial</h2>
+    <p class="section-intro">1 of 3 trial(s) never observed the blip instance go inactive - the mechanism didn't land as designed in those trials; treat their duplicate/drop counts as inconclusive rather than as evidence either way.</p>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Trial</th><th>Messages</th><th>Elapsed</th><th>Throughput</th>
+            <th>Inactive/Active events</th><th>Dropped</th><th>Global dup.</th><th>Global reorder</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="tabular">1</td>
+            <td class="tabular">403</td>
+            <td class="tabular">24.71s</td>
+            <td class="tabular">16.3/s</td>
+            <td class="tabular violations-bad">0 / 1</td>
+            <td class="tabular">0</td>
+            <td class="tabular violations-bad">3</td>
+            <td class="tabular violations-ok">0</td>
+          </tr>
+          <tr>
+            <td class="tabular">2</td>
+            <td class="tabular">417</td>
+            <td class="tabular">28.83s</td>
+            <td class="tabular">14.5/s</td>
+            <td class="tabular violations-ok">1 / 2</td>
+            <td class="tabular">54</td>
+            <td class="tabular violations-bad">11</td>
+            <td class="tabular violations-bad">7</td>
+          </tr>
+          <tr>
+            <td class="tabular">3</td>
+            <td class="tabular">409</td>
+            <td class="tabular">24.72s</td>
+            <td class="tabular">16.5/s</td>
+            <td class="tabular violations-ok">1 / 2</td>
+            <td class="tabular">54</td>
+            <td class="tabular violations-bad">9</td>
+            <td class="tabular violations-ok">0</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="notes-section">
+    <h2>Method &amp; caveats</h2>
+    <p class="chart-caption">Read the numbers above alongside these notes on how this benchmark was run.</p>
+    <ol>
+      <li><strong>Why this scenario needs a simulated blip at all.</strong> Adding more consumers than partitions never displaces an existing owner - only a genuine disconnect reaches FlowInactive on an instance that was truly already active. See the script header for the probes that established this.</li>
+      <li><strong>"Inactive/Active events" should read "1 / 1" per trial.</strong> One FlowInactive when the blip starts, one FlowActive once the broker re-admits the reconnected instance (typically ~5s - the queue's partitionRebalanceDelay - after BlipDurationSeconds elapses). If a trial shows 0/0, the blip didn't land as designed for that trial; its other numbers are inconclusive.</li>
+      <li><strong>"Dropped" is the fix engaging, not a bug.</strong> It counts messages the blip instance discarded (never called the handler on) because they were buffered before its last FlowInactive - see SolaceConcurrentSubscriber&lt;T&gt;.LogDropped. Zero here alongside real backlog would mean the blip fired too late to catch anything in flight, not that there was nothing to catch.</li>
+      <li><strong>Some residual duplication is possible even with Dropped > 0.</strong> The generation check only stops a message from being handled if it hasn't started yet. A message already inside a synchronous Handle() call at the exact moment of disconnect finishes normally and acks (or tries to) regardless - that one specific race isn't closed by this fix, only the much larger population of still-queued backlog is.</li>
+      <li><strong>One instance per partition is deliberate.</strong> It makes the blip instance's partition loss unambiguous (it had exactly one, now it has zero) rather than one of several, which is what makes this scenario cleanly attributable to it specifically.</li>
+      <li><strong>Every instance is torn down with Stop-Job (a hard kill) at the end of each trial.</strong> Only the blip in the middle of a trial is a deliberate, controlled disconnect; the final teardown is the same abrupt stop the other multi-subscriber benchmarks use.</li>
+    </ol>
+  </section>
+
+  <footer>
+    <span>messaging-lab.solace.loadgen</span>
+    <span>&rarr;</span>
+    <span>data-changed-p</span>
+    <span>&rarr;</span>
+    <span>CHANGED-P (8 partitions)</span>
+    <span>&rarr;</span>
+    <span>8 &times; messaging-lab.solace.subscriber (instance 1 blips)</span>
+    <span>&middot;</span>
+    <span>400 msgs &times; 3 trial(s) &middot; 64 keys/run</span>
+  </footer>
+
+</div>
+</body>
+</html>

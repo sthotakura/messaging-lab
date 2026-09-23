@@ -43,4 +43,18 @@ public sealed class SubscriberOptions
 
     /// <summary>See <see cref="SimulatedHandlerWorkMinMs"/>.</summary>
     public int SimulatedHandlerWorkMaxMs { get; init; } = 0;
+
+    /// <summary>
+    /// If set, this instance deliberately disconnects its own Solace session this many seconds after
+    /// starting, simulating a network blip or crash on an otherwise-healthy, still-running process.
+    /// This exists because Solace's own rebalance never displaces an already-active partition owner
+    /// just because more consumers join (see run-benchmark-mid-drain-rebalance.ps1's notes) - a real
+    /// session drop is the only way to reach <c>FlowEvent.FlowInactive</c> on an instance that was
+    /// genuinely active, so this is what <see cref="NetworkBlipSimulatorService"/> uses to reproduce
+    /// that from a single process. Null (the default) disables it.
+    /// </summary>
+    public int? SimulateBlipAfterSeconds { get; init; }
+
+    /// <summary>How long the simulated blip in <see cref="SimulateBlipAfterSeconds"/> lasts before reconnecting.</summary>
+    public int SimulateBlipDurationSeconds { get; init; } = 5;
 }
