@@ -20,6 +20,15 @@ public sealed class SubscriberOptions
     /// <summary>Worker/lane count passed to <see cref="messaging_lab.solace.fw.subscribe.SolaceConcurrentSubscriber{T}"/>; ignored otherwise.</summary>
     public int Concurrency { get; init; } = 4;
 
+    /// <summary>
+    /// Flow control window (max messages the broker will have delivered-but-unacked to this flow at
+    /// once) passed to <see cref="messaging_lab.solace.fw.subscribe.SolaceConcurrentSubscriber{T}"/>;
+    /// ignored otherwise. Null (the default) leaves the SDK's own default (255) in place. Valid range
+    /// is 1-255. Shrinking this bounds how many messages can be caught in a disturbed partition handoff
+    /// at once, at the cost of how far the broker can read ahead of this flow's actual processing rate.
+    /// </summary>
+    public int? WindowSize { get; init; }
+
     /// <summary>How often <see cref="Metrics.MetricsReportingService"/> logs a throughput/ordering/latency snapshot.</summary>
     public int MetricsReportIntervalSeconds { get; init; } = 5;
 

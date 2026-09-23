@@ -97,7 +97,8 @@ builder.Services.AddSingleton<IMessageSubscriber>(sp =>
     var keySelector = sp.GetRequiredService<IMessageKeySelector<OrderPlaced>>();
     var concurrentLogger = sp.GetRequiredService<ILogger<SolaceConcurrentSubscriber<OrderPlaced>>>();
     return new SolaceConcurrentSubscriber<OrderPlaced>(
-        session, settings, deserializer, handler, keySelector, subscriberOptions.Concurrency, concurrentLogger);
+        session, settings, deserializer, handler, keySelector, subscriberOptions.Concurrency,
+        subscriberOptions.WindowSize, concurrentLogger);
 });
 
 builder.Services.AddHostedService<SubscriberHostedService>();
