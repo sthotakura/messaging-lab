@@ -40,11 +40,12 @@ public sealed class MetricsReportingService(
     {
         var snapshot = metrics.Snapshot();
         logger.LogInformation(
-            "Handled {Count} messages in {Elapsed:g} ({Rate:F1} msgs/sec) - ordering violations: {Violations}, latency p50={P50:F1}ms p99={P99:F1}ms",
+            "Handled {Count} messages in {Elapsed:g} ({Rate:F1} msgs/sec) - ordering violations: {Violations}, duplicates: {Duplicates}, latency p50={P50:F1}ms p99={P99:F1}ms",
             snapshot.Count,
             snapshot.Elapsed,
             snapshot.MessagesPerSecond,
             snapshot.OrderingViolations,
+            snapshot.Duplicates,
             snapshot.P50LatencyMs,
             snapshot.P99LatencyMs);
     }

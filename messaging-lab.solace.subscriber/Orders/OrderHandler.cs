@@ -19,11 +19,18 @@ public sealed class OrderHandler(
 
         var latency = DateTime.UtcNow - message.PublishedAtUtc;
 
-        if (!orderingValidator.RecordAndCheck(message.OrderId, message.Sequence))
+        switch (orderingValidator.RecordAndCheck(message.OrderId, message.Sequence))
         {
-            metrics.RecordOrderingViolation();
-            logger.LogWarning(
-                "Out-of-order message for {OrderId}: sequence {Sequence} handled after a later one", message.OrderId, message.Sequence);
+            case OrderingOutcome.Duplicate:
+                metrics.RecordDuplicate();
+                logger.LogWarning(
+                    "Duplicate handling for {OrderId}: sequence {Sequence} was already handled", message.OrderId, message.Sequence);
+                break;
+            case OrderingOutcome.OutOfOrder:
+                metrics.RecordOrderingViolation();
+                logger.LogWarning(
+                    "Out-of-order message for {OrderId}: sequence {Sequence} handled after a later one", message.OrderId, message.Sequence);
+                break;
         }
 
         // This process's own OrderingValidator above only ever sees the subset of keys/sequences

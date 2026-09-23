@@ -154,7 +154,7 @@ function Publish-Batch {
     }
 }
 
-$MetricsPattern = 'Handled (\d+) messages in ([\d:.]+) \(([\d.]+) msgs/sec\) - ordering violations: (\d+), latency p50=([\d.]+)ms p99=([\d.]+)ms'
+$MetricsPattern = 'Handled (\d+) messages in ([\d:.]+) \(([\d.]+) msgs/sec\) - ordering violations: (\d+), duplicates: (\d+), latency p50=([\d.]+)ms p99=([\d.]+)ms'
 
 # Starts $InstanceCount subscriber processes bound to the partitioned queue, waits for the
 # broker to report the queue fully drained, then stops them and parses each one's last metrics
@@ -211,12 +211,13 @@ function Invoke-MultiSubscriberRun {
                 Messages   = [int]$g[1].Value
                 Rate       = [double]$g[3].Value
                 Violations = [int]$g[4].Value
-                P50Ms      = [double]$g[5].Value
-                P99Ms      = [double]$g[6].Value
+                Duplicates = [int]$g[5].Value
+                P50Ms      = [double]$g[6].Value
+                P99Ms      = [double]$g[7].Value
             }
         }
         else {
-            [pscustomobject]@{ Messages = 0; Rate = 0.0; Violations = 0; P50Ms = 0.0; P99Ms = 0.0 }
+            [pscustomobject]@{ Messages = 0; Rate = 0.0; Violations = 0; Duplicates = 0; P50Ms = 0.0; P99Ms = 0.0 }
         }
     }
     $jobs | Remove-Job -Force

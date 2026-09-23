@@ -11,6 +11,7 @@ public sealed class ThroughputTracker
 {
     long _count;
     long _orderingViolations;
+    long _duplicates;
     long _startTimestamp;
     long _lastTimestamp;
     readonly ConcurrentQueue<double> _latenciesMs = new();
@@ -26,10 +27,13 @@ public sealed class ThroughputTracker
 
     public void RecordOrderingViolation() => Interlocked.Increment(ref _orderingViolations);
 
+    public void RecordDuplicate() => Interlocked.Increment(ref _duplicates);
+
     public ThroughputSnapshot Snapshot()
     {
         var count = Interlocked.Read(ref _count);
         var violations = Interlocked.Read(ref _orderingViolations);
+        var duplicates = Interlocked.Read(ref _duplicates);
         var start = Interlocked.Read(ref _startTimestamp);
         var last = Interlocked.Read(ref _lastTimestamp);
         var elapsed = start == 0 ? TimeSpan.Zero : Stopwatch.GetElapsedTime(start, last);
@@ -37,7 +41,7 @@ public sealed class ThroughputTracker
         var latencies = _latenciesMs.ToArray();
         Array.Sort(latencies);
 
-        return new ThroughputSnapshot(count, violations, elapsed, Percentile(latencies, 0.50), Percentile(latencies, 0.99));
+        return new ThroughputSnapshot(count, violations, duplicates, elapsed, Percentile(latencies, 0.50), Percentile(latencies, 0.99));
     }
 
     static double Percentile(double[] sortedValues, double percentile)
@@ -51,6 +55,7 @@ public sealed class ThroughputTracker
 public readonly record struct ThroughputSnapshot(
     long Count,
     long OrderingViolations,
+    long Duplicates,
     TimeSpan Elapsed,
     double P50LatencyMs,
     double P99LatencyMs)

@@ -119,7 +119,7 @@ function Invoke-SubscriberRun {
     $output = Receive-Job $job
     Remove-Job -Job $job -Force
 
-    $pattern = 'Handled (\d+) messages in ([\d:.]+) \(([\d.]+) msgs/sec\) - ordering violations: (\d+), latency p50=([\d.]+)ms p99=([\d.]+)ms'
+    $pattern = 'Handled (\d+) messages in ([\d:.]+) \(([\d.]+) msgs/sec\) - ordering violations: (\d+), duplicates: (\d+), latency p50=([\d.]+)ms p99=([\d.]+)ms'
     $match = $output | Select-String -Pattern $pattern | Select-Object -Last 1
     if (-not $match) {
         Write-Warning "No metrics line found for this run; it may not have handled any messages."
@@ -132,8 +132,9 @@ function Invoke-SubscriberRun {
         ElapsedS   = [TimeSpan]::Parse($g[2].Value).TotalSeconds
         Rate       = [double]$g[3].Value
         Violations = [int]$g[4].Value
-        P50Ms      = [double]$g[5].Value
-        P99Ms      = [double]$g[6].Value
+        Duplicates = [int]$g[5].Value
+        P50Ms      = [double]$g[6].Value
+        P99Ms      = [double]$g[7].Value
     }
 }
 
@@ -150,6 +151,7 @@ function Add-Result {
         ElapsedS   = $Metrics.ElapsedS
         Rate       = $Metrics.Rate
         Violations = $Metrics.Violations
+        Duplicates = $Metrics.Duplicates
         P50Ms      = $Metrics.P50Ms
         P99Ms      = $Metrics.P99Ms
     }
