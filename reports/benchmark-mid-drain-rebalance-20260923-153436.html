@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mid-Drain Rebalance Benchmark - 20260923-153436</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    color-scheme: light dark;
+    --paper: #eef0ed; --surface: #ffffff; --surface-2: #f5f6f3;
+    --line: #dde0da; --line-strong: #c7ccc3;
+    --ink: #1c2129; --ink-soft: #545d6b; --ink-faint: #7c8492;
+    --accent: #a35a16; --baseline: #8b93a0;
+    --good: #2f7d52; --good-bg: #e3efe7;
+    --bad: #a3341f; --bad-bg: #f3e3df;
+    --font-display: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif;
+    --font-body: "IBM Plex Serif", Georgia, serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "Courier New", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #14171c; --surface: #1b1f26; --surface-2: #20242c;
+      --line: #2b313b; --line-strong: #3a4250;
+      --ink: #eef0f0; --ink-soft: #9aa3b0; --ink-faint: #7c8794;
+      --accent: #e08935; --baseline: #9aa3b0;
+      --good: #4caf7d; --good-bg: #1e2f26;
+      --bad: #e0685a; --bad-bg: #34211e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-body); line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  .page { max-width: 900px; margin: 0 auto; padding: 48px 24px 72px; display: flex; flex-direction: column; gap: 40px; }
+  h1, h2 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+  code { font-family: var(--font-mono); font-size: 0.92em; background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; padding: 0.05em 0.35em; }
+  .tabular { font-variant-numeric: tabular-nums; }
+
+  .masthead { display: flex; flex-direction: column; gap: 14px; padding-bottom: 28px; border-bottom: 1px solid var(--line); }
+  .eyebrow { margin: 0; font-family: var(--font-mono); font-size: 0.78rem; letter-spacing: 0.09em; text-transform: uppercase; color: var(--accent); }
+  .masthead h1 { font-size: clamp(1.9rem, 4vw, 2.5rem); font-weight: 700; letter-spacing: -0.01em; }
+  .dek { max-width: 66ch; margin: 0; color: var(--ink-soft); font-size: 1.02rem; }
+  .run-meta { margin: 6px 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  .run-meta > div { padding: 10px 14px; border-left: 1px solid var(--line); min-width: 0; overflow: hidden; }
+  .run-meta > div:first-child { border-left: none; }
+  .run-meta dt { margin: 0; font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-faint); }
+  .run-meta dd { margin: 3px 0 0; font-family: var(--font-mono); font-size: 0.86rem; color: var(--ink); overflow-wrap: anywhere; }
+
+  .headline-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
+  .stat-tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .stat-tile.status-good { background: var(--good-bg); border-color: var(--good); }
+  .stat-tile.status-bad { background: var(--bad-bg); border-color: var(--bad); }
+  .stat-value { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 2.05rem; letter-spacing: -0.01em; }
+  .status-good .stat-value { color: var(--good); }
+  .status-bad .stat-value { color: var(--bad); }
+  .stat-label { margin: 6px 0 0; font-size: 0.84rem; color: var(--ink-soft); line-height: 1.4; }
+
+  section h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 6px; }
+  .chart-caption, .section-intro { max-width: 70ch; color: var(--ink-soft); font-size: 0.92rem; margin: 0 0 16px; }
+  .chart-frame { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 18px 6px; }
+  .chart-frame svg { display: block; width: 100%; height: auto; }
+
+  .axis-label { fill: var(--ink-faint); font-family: var(--font-mono); font-size: 10.5px; }
+  .grid-line { stroke: var(--line); stroke-width: 1; }
+  .cat-label { fill: var(--ink); font-family: var(--font-display); font-weight: 600; font-size: 12.5px; }
+
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; background: var(--surface); font-size: 0.86rem; min-width: 720px; }
+  thead th { text-align: right; font-family: var(--font-mono); font-weight: 500; font-size: 0.7rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-faint); padding: 10px 14px; border-bottom: 1px solid var(--line-strong); white-space: nowrap; }
+  thead th:first-child { text-align: left; }
+  tbody td { text-align: right; font-family: var(--font-mono); padding: 10px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody td:first-child { text-align: left; font-family: var(--font-display); }
+  .violations-ok { color: var(--good); font-weight: 600; }
+  .violations-bad { color: var(--bad); font-weight: 600; }
+
+  .notes-section ol { padding-left: 1.3em; margin: 0; display: flex; flex-direction: column; gap: 10px; max-width: 72ch; }
+  .notes-section li { padding-left: 4px; }
+  .notes-section li::marker { font-family: var(--font-mono); color: var(--ink-faint); }
+
+  footer { padding-top: 20px; border-top: 1px solid var(--line); font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink-faint); display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="masthead">
+    <p class="eyebrow">messaging-lab &middot; benchmark report</p>
+    <h1>Mid-Drain Rebalance Benchmark</h1>
+    <p class="dek">
+      2 instance(s) start draining a 400-message backlog, then 2 more
+      bind 4s later, forcing Solace to rebalance partitions on a 8-partition queue
+      while real unacked backlog is still outstanding &mdash; sweeping <code>Subscriber:WindowSize</code>
+      across 3 configuration(s).
+    </p>
+    <dl class="run-meta">
+      <div><dt>Broker</dt><dd>tcp://localhost:55555 (default)</dd></div>
+      <div><dt>Route</dt><dd>data-changed-p &rarr; CHANGED-P</dd></div>
+      <div><dt>Partitions</dt><dd>8</dd></div>
+      <div><dt>Instances</dt><dd>2 initial + 2 joining</dd></div>
+      <div><dt>Join delay</dt><dd>4s</dd></div>
+      <div><dt>Load / run</dt><dd>400 msgs &middot; 64 keys</dd></div>
+      <div><dt>Simulated work</dt><dd>250&ndash;1000 ms</dd></div>
+      <div><dt>Run date</dt><dd>2026-09-23</dd></div>
+    </dl>
+  </header>
+
+  <section class="headline-stats">
+    <div class="stat-tile status-good">
+      <p class="stat-value tabular">0</p>
+      <p class="stat-label">duplicate handling(s), globally,<br>across 3 configurations</p>
+    </div>
+    <div class="stat-tile status-good">
+      <p class="stat-value tabular">0</p>
+      <p class="stat-label">global out-of-order (non-duplicate)<br>handling(s)</p>
+    </div>
+    <div class="stat-tile">
+      <p class="stat-value tabular">1234</p>
+      <p class="stat-label">total messages handled<br>across the sweep</p>
+    </div>
+  </section>
+
+  <section class="chart-section">
+    <h2>Global duplicates by WindowSize</h2>
+    <p class="chart-caption">No duplicates observed at any WindowSize in this sweep - either JoinDelaySeconds/Count/simulated work weren't aggressive enough to leave real backlog outstanding at handoff time, or the handoff genuinely completed cleanly every time. Try a larger -Count, a shorter -JoinDelaySeconds, or slower SimulatedHandlerWork*Ms in appsettings.json to manufacture more backlog.</p>
+    <div class="chart-frame">
+<svg viewBox='0 0 720 300' xmlns='http://www.w3.org/2000/svg' role='img' aria-label='Bar chart of globally-detected duplicate message handling by WindowSize'>
+<text x='14' y='20' class='axis-label'>duplicates</text>
+<line x1='46' x2='700' y1='260' y2='260' class='grid-line' />
+<text x='36' y='263' text-anchor='end' class='axis-label'>0</text>
+<line x1='46' x2='700' y1='213.2' y2='213.2' class='grid-line' />
+<text x='36' y='216.2' text-anchor='end' class='axis-label'>0.2</text>
+<line x1='46' x2='700' y1='166.4' y2='166.4' class='grid-line' />
+<text x='36' y='169.4' text-anchor='end' class='axis-label'>0.4</text>
+<line x1='46' x2='700' y1='119.6' y2='119.6' class='grid-line' />
+<text x='36' y='122.6' text-anchor='end' class='axis-label'>0.6</text>
+<line x1='46' x2='700' y1='72.8' y2='72.8' class='grid-line' />
+<text x='36' y='75.8' text-anchor='end' class='axis-label'>0.8</text>
+<line x1='46' x2='700' y1='26' y2='26' class='grid-line' />
+<text x='36' y='29' text-anchor='end' class='axis-label'>1</text>
+<rect x='120' y='259' width='70' height='1' rx='2' fill='#2f7d52' />
+<text x='155' y='253' text-anchor='middle' class='cat-label'>0</text>
+<text x='155' y='280' text-anchor='middle' class='cat-label'>WindowSize=255 (default)</text>
+<rect x='338' y='259' width='70' height='1' rx='2' fill='#2f7d52' />
+<text x='373' y='253' text-anchor='middle' class='cat-label'>0</text>
+<text x='373' y='280' text-anchor='middle' class='cat-label'>WindowSize=16</text>
+<rect x='556' y='259' width='70' height='1' rx='2' fill='#2f7d52' />
+<text x='591' y='253' text-anchor='middle' class='cat-label'>0</text>
+<text x='591' y='280' text-anchor='middle' class='cat-label'>WindowSize=4</text>
+</svg>
+    </div>
+  </section>
+
+  <section class="table-section">
+    <h2>Full results</h2>
+    <p class="section-intro">"Global" columns merge every instance's HANDLED log line by timestamp across process boundaries (see script header); "per-process" columns are each instance's own in-process OrderingValidator, summed. Per-process duplicates staying near zero while global duplicates move is the expected signature of a handoff-caused duplicate, not a bug in either counter.</p>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>WindowSize</th><th>Messages</th><th>Elapsed</th><th>Throughput</th>
+            <th>Global dup.</th><th>Global reorder</th><th>Per-proc dup.</th><th>Per-proc reorder</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>255 (default)</td>
+            <td class="tabular">400</td>
+            <td class="tabular">28.84s</td>
+            <td class="tabular">13.9/s</td>
+            <td class="tabular violations-ok">0</td>
+            <td class="tabular violations-ok">0</td>
+            <td class="tabular">0</td>
+            <td class="tabular">0</td>
+          </tr>
+          <tr>
+            <td>16</td>
+            <td class="tabular">428</td>
+            <td class="tabular">33.93s</td>
+            <td class="tabular">12.6/s</td>
+            <td class="tabular violations-ok">0</td>
+            <td class="tabular violations-ok">0</td>
+            <td class="tabular">0</td>
+            <td class="tabular">0</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td class="tabular">406</td>
+            <td class="tabular">35.03s</td>
+            <td class="tabular">11.6/s</td>
+            <td class="tabular violations-ok">0</td>
+            <td class="tabular violations-ok">0</td>
+            <td class="tabular">0</td>
+            <td class="tabular">0</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="notes-section">
+    <h2>Method &amp; caveats</h2>
+    <p class="chart-caption">Read the numbers above alongside these notes on how this benchmark was run.</p>
+    <ol>
+      <li><strong>One trial per WindowSize value.</strong> Rebalance timing races against real wall-clock delays (JoinDelaySeconds, the broker's own partitionRebalanceDelay/partitionRebalanceMaxHandoffTime), so a single run can land on either side of the timing window that produces a duplicate. Treat this as indicative, not a precise rate.</li>
+      <li><strong>Global vs. per-process counts measure different things.</strong> See the table caption above - only the global, cross-process merge can see a message the original consumer handled once and the post-handoff new owner handled again.</li>
+      <li><strong>This exercises the partial-rebalance path, not FlowActive/FlowInactive.</strong> Adding instances here causes each existing one to give up some (not all) of its partitions, which never fires Solace's FlowInactive event - see the script header for why, and what topology would be needed to exercise that path instead.</li>
+      <li><strong>Every instance is torn down with Stop-Job (a hard kill), including at the end of each configuration.</strong> The graceful drain-before-disconnect fix in SubscriberHostedService is not exercised by this sweep - it only matters for a real, signaled shutdown, which doesn't happen here.</li>
+      <li><strong>The simulated handler cost and JoinDelaySeconds are what make a handoff-time duplicate possible at all.</strong> If SimulatedHandlerWork*Ms in appsettings.json is fast enough (or JoinDelaySeconds long enough) that the initial instances fully drain before joiners even bind, there's nothing for the joiners to be handed off mid-flight and this sweep degenerates to run-benchmark-multisubscriber.ps1's startup-only case.</li>
+    </ol>
+  </section>
+
+  <footer>
+    <span>messaging-lab.solace.loadgen</span>
+    <span>&rarr;</span>
+    <span>data-changed-p</span>
+    <span>&rarr;</span>
+    <span>CHANGED-P (8 partitions)</span>
+    <span>&rarr;</span>
+    <span>2 + 2 &times; messaging-lab.solace.subscriber</span>
+    <span>&middot;</span>
+    <span>400 msgs &times; 3 configs &middot; 64 keys/run</span>
+  </footer>
+
+</div>
+</body>
+</html>

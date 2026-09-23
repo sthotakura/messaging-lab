@@ -149,7 +149,12 @@ $HandledPattern = '^(?<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} [+\-]\d{2}:
 function Get-HandledEvents {
     param([int]$InstanceId, [datetime]$Start, [datetime]$End)
 
-    $file = Get-ChildItem -Path $LogsDir -Filter "subscriber-$InstanceId-*.log" -ErrorAction SilentlyContinue | Select-Object -First 1
+    # -Filter's glob matches every rolled-over date for this instance (e.g. both
+    # subscriber-1-20260920.log and subscriber-1-20260923.log), and Get-ChildItem doesn't sort by
+    # date - picking the wrong one silently returns zero events for the actual run instead of an
+    # error. Sort by LastWriteTime so today's (still being appended to) file always wins.
+    $file = Get-ChildItem -Path $LogsDir -Filter "subscriber-$InstanceId-*.log" -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if (-not $file) { return @() }
 
     $windowStart = $Start.AddSeconds(-1)
