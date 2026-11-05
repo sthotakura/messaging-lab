@@ -27,6 +27,8 @@ dotnet build messaging-lab.slnx
 - `messaging-lab.solace.loadgen/` — a console app that publishes `OrderPlaced` test messages to a topic via `SolacePublisher<T>`, round-robin across a configurable number of keys with a strictly increasing per-key `Sequence`, always setting `OrderKeySelector`'s key as the Solace partition key (a no-op against a non-partitioned queue).
 - `messaging-lab.solace.subscriber/` — a console app that binds either `SolaceConcurrentSubscriber<T>` or `SolaceSequentialSubscriber<T>` (config-driven) and reports throughput, end-to-end latency (p50/p99), and per-key ordering violations, so the two subscriber types can be compared directly, or so multiple concurrently-running instances (each tagged with `Subscriber:InstanceId`) can be compared as competing consumers. See [Comparing the subscribers](#comparing-the-subscribers) and [Comparing multiple subscribers](#comparing-multiple-subscribers) below.
 
+- `messaging-lab.solace.fanout/` — a console app that publishes persistent messages at a fixed rate and tracks the broker's ACK or rejection for each one. Used by the [fan-out lab](#fan-out-and-spool-quotas).
+
 Both console apps log to the console and to a rolling daily file under `logs/` (see [Logging](#logging) below).
 
 See `CLAUDE.md` for a deeper architectural walkthrough (interface/adapter split, concurrency model, disposal ownership).
@@ -243,6 +245,40 @@ Only *lane count* (`SolaceConcurrentSubscriber<T>`'s in-process concurrency) rel
 | Does the built-in per-process check catch the problem? | No - reports 0 regardless | N/A - guarantee holds by construction |
 
 The partition key doesn't just fix ordering - it's also what makes horizontal scaling with more subscriber processes actually work at all on this broker, by giving it a concrete reason (a disjoint partition to own) to spread load across more than a couple of consumers.
+
+## Fan-out and spool quotas
+
+What happens to everyone else when one queue on a shared topic fills up? One topic fans out to three queues, each with its own single-lane subscriber. The subscriber on `FANOUT-C` isn't started until 60 seconds in, so its queue builds a backlog. Each scenario changes only `FANOUT-C`'s configuration.
+
+```
+./scripts/start-solace.ps1
+./scripts/run-benchmark-fanout-spool-quota.ps1
+```
+
+The script creates and deletes the `FANOUT-*` queues itself and writes an HTML report to `reports/`. It takes about 6 minutes.
+
+### Results
+
+Publishing 500 msgs/sec of about 1 KB for 90 seconds, one run per scenario ([full report](reports/benchmark-fanout-spool-quota-20261105-200850.html)):
+
+| `FANOUT-C` configuration | Publisher | `FANOUT-A` and `FANOUT-B` | `FANOUT-C` |
+|---|---|---|---|
+| 1000 MB quota, default discard behaviour | 0 rejected | Missed nothing | Missed nothing, backlog peaked at 33 MB |
+| 5 MB quota, default discard behaviour | **25,752 of 44,999 rejected** | **Each missed 25,752** | Missed 25,752 |
+| 5 MB quota, discard behaviour `never` | 0 rejected | Missed nothing | **Silently lost 25,734** |
+
+- **With the default setting, one full queue stops delivery to every queue on the topic.** A queue's `rejectMsgToSenderOnDiscardBehavior` defaults to `when-queue-enabled`. Once `FANOUT-C` was full, the broker rejected each new message with `503 Spool Over Quota`, and a rejected message goes to no queue at all. None of the rejected sequence numbers appears in what `FANOUT-A` or `FANOUT-B` handled, even though their subscribers were healthy throughout.
+- **`never` protects the healthy queues, but the loss is silent.** The publisher gets an ACK for every message, including those the full queue discards. The only trace is the queue's `maxMsgSpoolUsageExceededDiscardedMsgCount` counter on the broker, so alert on that if you use this setting.
+- **A larger quota buys time; it isn't a fix.** In the control, the same absent subscriber caused no harm only because the quota wasn't reached during the run. At this rate, a 1000 MB quota would last roughly half an hour.
+- **Recovery is fast, but the gap stays.** Rejections stopped within a second of `FANOUT-C`'s subscriber being launched, with handlers doing no work. A slow subscriber would free space more slowly. This publisher doesn't resend, so the rejected messages stayed lost for all three queues.
+
+### Publishers must watch for rejections
+
+`ISession.Send` returning `SOLCLIENT_OK` doesn't mean the broker accepted a guaranteed message. The ACK or rejection arrives later as a session event (`Acknowledgement` or `RejectedMessageError`). `SolaceMessageSender<T>` and `messaging-lab.solace.loadgen` don't watch those events, so against a full queue they would report success while every message was being rejected. `messaging-lab.solace.fanout` tracks them in `PublishOutcomeTracker`.
+
+### Limits of this lab
+
+This is one run per scenario on a local Docker broker. The small quota compresses time, so the counts scale with rate and outage length and aren't predictions for any other system. VPN-level spool limits aren't covered.
 
 ## Porting `SolaceConcurrentSubscriber<T>` to .NET Framework 4.8
 
@@ -496,6 +532,8 @@ The shape is identical to the original - same constructor signature, same router
 - **`OnMessageReceived` blocks the Solace context thread identically to the `Channel` version** (`_ingress.Add` blocks at capacity just like `WriteAsync(...).GetAwaiter().GetResult()` did) - no change in backpressure behavior, just a different API to get there.
 
 ## Logging
+
+`messaging-lab.solace.fanout` also writes `logs/fanout-YYYYMMDD.log` next to its executable.
 
 Both `messaging-lab.solace.loadgen` and `messaging-lab.solace.subscriber` log to the console and to a rolling daily file (via Serilog) next to the built executable - `logs/loadgen-YYYYMMDD.log` and `logs/subscriber-YYYYMMDD.log` respectively, retaining the last 14 days - so a run's output survives after the process exits and can be reviewed for anomalies later.
 

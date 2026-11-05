@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fan-out Spool Quota Lab - @@STAMP@@</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    color-scheme: light dark;
+    --paper: #eef0ed; --surface: #ffffff; --surface-2: #f5f6f3;
+    --line: #dde0da; --line-strong: #c7ccc3;
+    --ink: #1c2129; --ink-soft: #545d6b; --ink-faint: #7c8492;
+    --accent: #a35a16;
+    --good: #2f7d52; --good-bg: #e3efe7;
+    --bad: #a3341f; --bad-bg: #f3e3df;
+    --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
+    --font-display: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif;
+    --font-body: "IBM Plex Serif", Georgia, serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "Courier New", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #14171c; --surface: #1b1f26; --surface-2: #20242c;
+      --line: #2b313b; --line-strong: #3a4250;
+      --ink: #eef0f0; --ink-soft: #9aa3b0; --ink-faint: #7c8794;
+      --accent: #e08935;
+      --good: #4caf7d; --good-bg: #1e2f26;
+      --bad: #e0685a; --bad-bg: #34211e;
+      --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-body); line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  .page { max-width: 1120px; margin: 0 auto; padding: 48px 24px 72px; display: flex; flex-direction: column; gap: 40px; }
+  h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+  code { font-family: var(--font-mono); font-size: 0.92em; background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; padding: 0.05em 0.35em; }
+  .tabular { font-variant-numeric: tabular-nums; }
+  .masthead { display: flex; flex-direction: column; gap: 14px; padding-bottom: 28px; border-bottom: 1px solid var(--line); }
+  .eyebrow { margin: 0; font-family: var(--font-mono); font-size: 0.78rem; letter-spacing: 0.09em; text-transform: uppercase; color: var(--accent); }
+  .masthead h1 { font-size: clamp(1.9rem, 4vw, 2.5rem); font-weight: 700; letter-spacing: -0.01em; }
+  .dek { max-width: 72ch; margin: 0; color: var(--ink-soft); font-size: 1.02rem; }
+  .run-meta { margin: 6px 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  .run-meta > div { padding: 10px 14px; border-left: 1px solid var(--line); min-width: 0; }
+  .run-meta > div:first-child { border-left: none; }
+  .run-meta dt { font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-faint); }
+  .run-meta dd { margin: 3px 0 0; font-family: var(--font-mono); font-size: 0.86rem; overflow-wrap: anywhere; }
+  .headline-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
+  .stat-tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .stat-tile.status-good { background: var(--good-bg); border-color: var(--good); }
+  .stat-tile.status-bad { background: var(--bad-bg); border-color: var(--bad); }
+  .stat-value { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 2.05rem; letter-spacing: -0.01em; }
+  .status-good .stat-value { color: var(--good); }
+  .status-bad .stat-value { color: var(--bad); }
+  .stat-label { margin: 6px 0 0; font-size: 0.84rem; color: var(--ink-soft); line-height: 1.4; }
+  section h2 { font-size: 1.35rem; font-weight: 600; margin-bottom: 6px; }
+  .section-intro, .chart-caption { max-width: 80ch; color: var(--ink-soft); font-size: 0.92rem; margin: 0 0 12px; }
+  .finding { max-width: 80ch; margin: 0 0 18px; }
+  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 14px; margin-bottom: 16px; }
+  .chart { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 14px 8px; min-width: 0; }
+  .chart h3 { font-size: 0.98rem; font-weight: 600; }
+  .chart-note { margin: 4px 0 6px; font-size: 0.78rem; line-height: 1.35; color: var(--ink-soft); }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 4px 0 6px; min-height: 1.3em; font-family: var(--font-mono); font-size: 0.75rem; color: var(--ink-soft); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .key { width: 14px; height: 2px; border-radius: 1px; display: inline-block; }
+  svg { display: block; width: 100%; height: auto; touch-action: none; }
+  .grid { stroke: var(--line); stroke-width: 1; }
+  .axis-text { font-family: var(--font-mono); font-size: 11px; fill: var(--ink-faint); }
+  .end-label { font-family: var(--font-mono); font-size: 11px; fill: var(--ink-soft); }
+  .event { stroke: var(--ink-faint); stroke-width: 1; }
+  .limit { stroke: var(--bad); stroke-width: 1; }
+  .series { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .crosshair { stroke: var(--ink-soft); stroke-width: 1; visibility: hidden; }
+  #tooltip { position: fixed; z-index: 10; pointer-events: none; display: none; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px; padding: 8px 10px; font-family: var(--font-mono); font-size: 0.75rem; box-shadow: 0 4px 14px rgb(0 0 0 / 0.14); }
+  #tooltip div { display: flex; align-items: center; gap: 6px; }
+  #tooltip strong { min-width: 5ch; text-align: right; }
+  #tooltip .when { color: var(--ink-faint); margin-bottom: 3px; }
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; background: var(--surface); font-size: 0.86rem; min-width: 720px; }
+  thead th { text-align: right; font-family: var(--font-mono); font-weight: 500; font-size: 0.72rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-faint); padding: 10px 14px; border-bottom: 1px solid var(--line-strong); }
+  thead th:first-child { text-align: left; }
+  tbody td { text-align: right; font-family: var(--font-mono); padding: 10px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody td:first-child { text-align: left; font-family: var(--font-display); }
+  .violations-ok { color: var(--good); font-weight: 600; }
+  .violations-bad { color: var(--bad); font-weight: 600; }
+  .notes-section ol { padding-left: 1.3em; margin: 0; display: flex; flex-direction: column; gap: 10px; max-width: 80ch; }
+  footer { padding-top: 20px; border-top: 1px solid var(--line); font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink-faint); }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <p class="eyebrow">messaging-lab &middot; lab report</p>
+    <h1>One queue's spool quota, and who pays for it</h1>
+    <p class="dek">One topic fans out to three queues. FANOUT-A and FANOUT-B have healthy single-lane subscribers. FANOUT-C's subscriber isn't started until t=@@CSTART@@s, so its queue builds a backlog. Each scenario changes only FANOUT-C's configuration.</p>
+    <dl class="run-meta">
+      <div><dt>Route</dt><dd>@@TOPIC@@ &rarr; FANOUT-A/B/C</dd></div>
+      <div><dt>Publisher</dt><dd>@@RATE@@ msgs/sec, persistent</dd></div>
+      <div><dt>Padding</dt><dd>@@PAYLOAD@@ bytes</dd></div>
+      <div><dt>Duration</dt><dd>@@DURATION@@s</dd></div>
+      <div><dt>Subscribers</dt><dd>1 lane, no simulated work</dd></div>
+      <div><dt>Run date</dt><dd>@@DATE@@</dd></div>
+    </dl>
+  </header>
+  <section class="headline-stats">@@TILES@@</section>
+@@SCENARIOS@@
+  <section class="notes-section">
+    <h2>Reading this</h2>
+    <ol>
+      @@NOTES@@
+    </ol>
+  </section>
+  <footer>Generated by scripts/run-benchmark-fanout-spool-quota.ps1</footer>
+</div>
+<div id="tooltip" role="status"></div>
+<script type="application/json" id="chart-data">@@JSON@@</script>
+<script>
+(function () {
+  const SVG = "http://www.w3.org/2000/svg";
+  const scenarios = JSON.parse(document.getElementById("chart-data").textContent);
+  const tooltip = document.getElementById("tooltip");
+  const W = 340, H = 200, L = 44, R = 62, T = 10, B = 26;
+
+  function el(name, attrs, parent, text) {
+    const node = document.createElementNS(SVG, name);
+    for (const key in attrs) node.setAttribute(key, attrs[key]);
+    if (text !== undefined) node.textContent = text;
+    if (parent) parent.appendChild(node);
+    return node;
+  }
+
+  function niceMax(value) {
+    if (value <= 0) return 1;
+    const magnitude = Math.pow(10, Math.floor(Math.log10(value)));
+    const residual = value / magnitude;
+    const nice = residual <= 1 ? 1 : residual <= 2 ? 2 : residual <= 5 ? 5 : 10;
+    return nice * magnitude;
+  }
+
+  function format(value) {
+    return value >= 1000 ? Math.round(value).toLocaleString("en-US") : String(Math.round(value * 100) / 100);
+  }
+
+  function renderChart(host, spec) {
+    const card = document.createElement("div");
+    card.className = "chart";
+    const title = document.createElement("h3");
+    title.textContent = spec.title;
+    card.appendChild(title);
+    const legend = document.createElement("div");
+    legend.className = "legend";
+    if (spec.series.length > 1) {
+      spec.series.forEach(s => {
+        const item = document.createElement("span");
+        const key = document.createElement("i");
+        key.className = "key";
+        key.style.background = s.color;
+        item.appendChild(key);
+        item.appendChild(document.createTextNode(s.name));
+        legend.appendChild(item);
+      });
+    }
+    card.appendChild(legend);
+
+    const maxY = niceMax(Math.max(spec.limit || 0, ...spec.series.flatMap(s => s.points.map(p => p[1]))));
+    const x = t => L + (t / spec.maxT) * (W - L - R);
+    const y = v => H - B - (v / maxY) * (H - T - B);
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": spec.title + ". Totals are in the table below." }, card);
+
+    for (let i = 0; i <= 4; i++) {
+      const value = maxY * i / 4;
+      el("line", { x1: L, x2: W - R, y1: y(value), y2: y(value), class: "grid" }, svg);
+      el("text", { x: L - 6, y: y(value) + 3, "text-anchor": "end", class: "axis-text" }, svg, format(value));
+    }
+    const step = spec.maxT > 120 ? 60 : 30;
+    for (let t = 0; t <= spec.maxT; t += step) {
+      el("text", { x: x(t), y: H - 10, "text-anchor": "middle", class: "axis-text" }, svg, t + "s");
+    }
+
+    el("line", { x1: x(spec.eventT), x2: x(spec.eventT), y1: T, y2: H - B, class: "event" }, svg);
+    el("text", { x: x(spec.eventT) - 4, y: T + 8, "text-anchor": "end", class: "axis-text" }, svg, "C starts");
+
+    if (spec.limit) {
+      el("line", { x1: L, x2: W - R, y1: y(spec.limit), y2: y(spec.limit), class: "limit" }, svg);
+      el("text", { x: W - R + 4, y: y(spec.limit) + 3, class: "end-label" }, svg, "quota");
+    }
+
+    spec.series.forEach(s => {
+      const d = s.points.map((p, i) => (i ? "L" : "M") + x(p[0]).toFixed(1) + " " + y(p[1]).toFixed(1)).join("");
+      el("path", { d, class: "series", stroke: s.color }, svg);
+    });
+
+    // End labels, nudged apart when lines finish at nearly the same value.
+    if (spec.series.length > 1) {
+      const labels = spec.series.map(s => {
+        const last = s.points[s.points.length - 1];
+        return { name: s.short, px: x(last[0]) + 4, py: y(last[1]) + 3 };
+      }).sort((a, b) => a.py - b.py);
+      for (let i = 1; i < labels.length; i++) labels[i].py = Math.max(labels[i].py, labels[i - 1].py + 11);
+      labels.forEach(label => el("text", { x: label.px, y: label.py, class: "end-label" }, svg, label.name));
+    }
+
+    const crosshair = el("line", { y1: T, y2: H - B, class: "crosshair" }, svg);
+    const hit = el("rect", { x: L, y: T, width: W - L - R, height: H - T - B, fill: "transparent" }, svg);
+
+    hit.addEventListener("pointermove", event => {
+      const box = svg.getBoundingClientRect();
+      const t = ((event.clientX - box.left) / box.width * W - L) / (W - L - R) * spec.maxT;
+      crosshair.setAttribute("x1", x(t));
+      crosshair.setAttribute("x2", x(t));
+      crosshair.style.visibility = "visible";
+
+      tooltip.replaceChildren();
+      const when = document.createElement("div");
+      when.className = "when";
+      when.textContent = "t = " + Math.round(t) + "s";
+      tooltip.appendChild(when);
+      spec.series.forEach(s => {
+        const nearest = s.points.reduce((best, p) => Math.abs(p[0] - t) < Math.abs(best[0] - t) ? p : best, s.points[0]);
+        const row = document.createElement("div");
+        const key = document.createElement("i");
+        key.className = "key";
+        key.style.background = s.color;
+        const value = document.createElement("strong");
+        value.textContent = format(nearest[1]);
+        row.append(key, value, document.createTextNode(s.name));
+        tooltip.appendChild(row);
+      });
+      tooltip.style.display = "block";
+      const left = Math.min(event.clientX + 14, window.innerWidth - tooltip.offsetWidth - 8);
+      tooltip.style.left = left + "px";
+      tooltip.style.top = (event.clientY + 14) + "px";
+    });
+    hit.addEventListener("pointerleave", () => {
+      crosshair.style.visibility = "hidden";
+      tooltip.style.display = "none";
+    });
+
+    if (spec.note) {
+      const note = document.createElement("p");
+      note.className = "chart-note";
+      note.textContent = spec.note;
+      card.appendChild(note);
+    }
+
+    host.appendChild(card);
+  }
+
+  const color = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+  scenarios.forEach(scenario => {
+    const host = document.querySelector(`[data-scenario="${scenario.key}"] .charts`);
+    const maxT = Math.ceil(Math.max(...scenario.samples.map(s => s.t)) / 10) * 10;
+    // Only seconds in which the publisher was sending: the ticks while it waits for the last verdicts
+    // would otherwise read as ACKs collapsing to zero at the end of the run.
+    const rates = key => scenario.publisher.slice(1).flatMap((row, i) => {
+      const previous = scenario.publisher[i];
+      return row.sent > previous.sent ? [[row.t, (row[key] - previous[key]) / (row.t - previous.t)]] : [];
+    });
+    const common = { maxT, eventT: scenario.subscriberCStartS };
+
+    renderChart(host, { ...common, title: "Publisher: broker verdicts per second", series: [
+      { name: "ACKed", short: "ACKed", color: color("--series-1"), points: rates("acked") },
+      { name: "Rejected", short: "Rejected", color: color("--series-2"), points: rates("rejected") },
+    ]});
+    renderChart(host, { ...common, title: "Messages accepted by each queue, cumulative", note: "One visible line means the queues accepted the same number of messages. FANOUT-B is in the table.", series: [
+      { name: "FANOUT-A and B", short: "A, B", color: color("--series-3"), points: scenario.samples.map(s => [s.t, s.aSpool]) },
+      { name: "FANOUT-C", short: "C", color: color("--series-4"), points: scenario.samples.map(s => [s.t, s.cSpool]) },
+    ]});
+    const usage = scenario.samples.map(s => [s.t, s.cUsage / 1048576]);
+    const peak = Math.max(...usage.map(p => p[1]));
+    renderChart(host, { ...common, title: "FANOUT-C spool usage, MB", limit: peak >= scenario.quotaMb * 0.5 ? scenario.quotaMb : 0, series: [
+      { name: "FANOUT-C", short: "C", color: color("--series-4"), points: usage },
+    ]});
+  });
+})();
+</script>
+</body>
+</html>

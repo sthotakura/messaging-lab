@@ -3,6 +3,7 @@
     <File Path="README.md" />
   </Folder>
   <Project Path="messaging-lab.orders/messaging-lab.orders.csproj" />
+  <Project Path="messaging-lab.solace.fanout/messaging-lab.solace.fanout.csproj" />
   <Project Path="messaging-lab.solace.fw/messaging-lab.solace.fw.csproj" />
   <Project Path="messaging-lab.solace.loadgen/messaging-lab.solace.loadgen.csproj" />
   <Project Path="messaging-lab.solace.subscriber/messaging-lab.solace.subscriber.csproj" />
